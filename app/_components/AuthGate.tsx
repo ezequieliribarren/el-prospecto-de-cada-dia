@@ -10,7 +10,7 @@ export default function AuthGate({ children, allow }: { children: React.ReactNod
   if (!user) {
     return (
       <div className="card p-6 max-w-md mx-auto text-center">
-        <div className="text-lg font-semibold mb-2">Necesitas iniciar sesión</div>
+        <div className="text-lg font-semibold mb-2">Necesitas iniciar sesion</div>
         <a className="btn" href="/login">Ir a login</a>
       </div>
     );
@@ -19,7 +19,7 @@ export default function AuthGate({ children, allow }: { children: React.ReactNod
     return (
       <div className="card p-6 max-w-md mx-auto text-center">
         <div className="text-lg font-semibold mb-2">Acceso restringido</div>
-        <div className="text-white/70">No tienes permisos para ver esta sección.</div>
+        <div className="text-white/70">No tienes permisos para ver esta seccion.</div>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React from 'react';
 import useSWR from 'swr';
 import { api } from '../../lib/api';
@@ -27,7 +27,7 @@ export default function SentPage(){
         <div className="text-xs text-white/60">Total: {items.length}</div>
         <div className="card p-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <L label="Buscar">
-            <input className="input w-full" value={q} onChange={e=>setQ(e.target.value)} placeholder="usuario o teléfono" />
+            <input className="input w-full" value={q} onChange={e=>setQ(e.target.value)} placeholder="usuario o telefono" />
           </L>
           <L label="Interesados">
             <input type="checkbox" checked={showInterested} onChange={e=>setShowInterested(e.target.checked)} />
@@ -124,3 +124,6 @@ function L({ label, children }: { label: string, children: React.ReactNode }){
     </label>
   );
 }
+
+
+

@@ -11,7 +11,6 @@ export default function PlanPage(){
   const [days, setDays] = React.useState(2);
   const range = useSWR(['/plan/range', start, days], () => api.get('/plan/range', { params: { start, days } }).then(r=>r.data));
   const settings = useSWR('/settings', () => api.get('/settings').then(r=>r.data));
-  
 
   async function startTimer(){ await api.post('/work/start'); }
   async function stopTimer(){ await api.post('/work/stop'); }
@@ -19,7 +18,7 @@ export default function PlanPage(){
   React.useEffect(()=>{
     const role = me.data?.user?.role;
     if (role === 'admin') {
-      // Intenta asegurar planificación de próximas semanas en background
+      // Intenta asegurar planificacion de proximas semanas en background
       // api.post('/plan/auto', { days: 60 }).catch(()=>{});
     }
   }, [me.data?.user?.role]);
@@ -49,20 +48,6 @@ export default function PlanPage(){
           onMark={async (id:number, status:string)=>{ await api.put(`/plan/${id}/status`, { status }); range.mutate(); }}
           onDelete={async (prospectId:number)=>{ await api.delete(`/prospects/${prospectId}`); range.mutate(); }}
         />
-
-        <div className="hidden">
-          <button className="btn-outline" onClick={()=>{ setDays(d=>d+2); range.mutate(); }}>Cargar +2 días</button>
-          {me.data?.user?.role==='admin' && (
-            <>
-              {/* Auto-planificar removido */}
-              {/* Asignar usuarios removido: se asignan automáticamente */}
-            </>
-          )}
-          <div className="ml-auto flex gap-2">
-            <button className="btn-outline" onClick={startTimer}>Iniciar cronómetro</button>
-            <button className="btn-outline" onClick={stopTimer}>Detener</button>
-          </div>
-        </div>
       </div>
     </AuthGate>
   );
@@ -80,7 +65,7 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
 
   function fmtDate(d:string){
     const dd = dayjs(d);
-    const names = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const names = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
     return `${names[dd.day()]} ${dd.format('D/MM [de] YYYY')}`;
   }
 
@@ -91,7 +76,7 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
         // group by assigned user
         const groups: Record<string, any[]> = {};
         for (const it of list){ const key = it.assigned_username || it.account_label || 'Sin asignar'; (groups[key] ||= []).push(it); }
-        const locked = date !== today; // sólo hoy clickeable; resto visible pero bloqueado
+        const locked = date !== today; // solo hoy clickeable; resto visible pero bloqueado
         return (
           <div key={date} className="card p-4">
             <div className="flex items-center justify-between text-white/90 font-semibold mb-3">
@@ -99,8 +84,8 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
               <button
                 className="text-sm text-white/70 hover:text-white"
                 onClick={()=> setCollapsed(prev => ({ ...prev, [date]: !prev[date] }))}
-                aria-label={collapsed[date] ? 'Expandir día' : 'Colapsar día'}
-              >{collapsed[date] ? '▶' : '▼'}</button>
+                aria-label={collapsed[date] ? 'Expandir dia' : 'Colapsar dia'}
+              >{collapsed[date] ? '>' : 'v'}</button>
             </div>
             {!collapsed[date] && (
             <div className="grid grid-cols-1 gap-4">
@@ -110,22 +95,19 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
                   <div>
                     <HeaderRow />
                     {arr.map((it:any)=>{
-                      const mine = !user || user.role==='admin' || it.assigned_user_id==null || it.assigned_user_id===user.id;
-                      const clickable = mine && (!locked || user?.role==='admin');
+                      const clickable = user?.role==='sender' && date===today;
                       return (
-                        <div key={it.plan_id} className={`grid grid-cols-3 gap-2 items-center px-3 py-2 border-t border-white/10 ${mine ? 'shadow-[0_0_0_1px_rgba(46,255,126,0.25)]' : 'opacity-60'} `}>
+                        <div key={it.plan_id} className="grid grid-cols-3 gap-2 items-center px-3 py-2 border-b border-white/10 last:border-b-0">
                           <div className="truncate">
-                            <div>{it.full_name || '@'+it.username}</div>
+                            <div>@{it.username}</div>
                             <div className="text-xs text-white/60">
-                              Carga: {it.upload_created_at ? new Date(it.upload_created_at).toLocaleDateString() : '-'}
-                              {' '}
-                              • Cuenta: {it.upload_instagram_account || '-'}
+                              Carga: {it.upload_created_at ? new Date(it.upload_created_at).toLocaleDateString() : '-'} - Cuenta: {it.upload_instagram_account || '-'}
                             </div>
                           </div>
-                          <div className="text-sm capitalize">{it.status}</div>
-                          <div className="flex justify-end gap-2">
+                          <div className="capitalize text-sm">{it.status}</div>
+                          <div className="ml-auto flex items-center gap-2">
                             <a
-                              className={`btn ${clickable ? '' : 'pointer-events-none opacity-60'}`}
+                              className={`btn-outline ${clickable ? '' : 'pointer-events-none opacity-60'}`}
                               href={it.href}
                               target="_blank"
                               onClick={(e)=>{
@@ -192,17 +174,17 @@ function TopControls({ isAdmin, isSender, perDay, onSavePerDay, onLoadMore, onSt
     <div className="flex items-center gap-2">
       {isAdmin && (
         <label className="text-sm flex items-end gap-2">
-          <span className="text-white/70 mb-1">Mensajes/día por sender</span>
+          <span className="text-white/70 mb-1">Mensajes/dia por sender</span>
           <input type="number" min={1} className="input w-24" value={val} onChange={e=>setVal(Number(e.target.value)||1)} />
           <button className="btn" onClick={()=>onSavePerDay(val)}>Guardar</button>
         </label>
       )}
-      <button className="btn-outline" onClick={onLoadMore}>Cargar +2 días</button>
+      <button className="btn-outline" onClick={onLoadMore}>Cargar +2 dias</button>
       {isSender && (
         <div className="ml-auto flex items-center gap-2">
           <div className="text-sm text-white/70">{active ? fmt(elapsed) : '00:00'}</div>
           {!active ? (
-            <button className="btn-outline" onClick={async ()=>{ await onStart(); mutate(); }}>Iniciar cronómetro</button>
+            <button className="btn-outline" onClick={async ()=>{ await onStart(); mutate(); }}>Iniciar cronometro</button>
           ) : (
             <button className="btn-outline" onClick={async ()=>{ await onStop(); mutate(); }}>Detener</button>
           )}
@@ -211,3 +193,4 @@ function TopControls({ isAdmin, isSender, perDay, onSavePerDay, onLoadMore, onSt
     </div>
   );
 }
+

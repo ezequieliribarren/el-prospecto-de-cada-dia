@@ -19,7 +19,27 @@ Aplicación completa para gestionar envíos de mensajes de Instagram desde archi
   - `npm run dev`
   - Web en `http://localhost:3000`
 
-> Opcional: define `NEXT_PUBLIC_API_BASE` para apuntar a otra URL (por defecto `http://localhost:4000/api`).
+> Produccion: define `NEXT_PUBLIC_API_BASE` para apuntar al backend publico (por defecto `http://localhost:4000/api`).
+
+Despliegue recomendado (Vercel + Render/Railway)
+
+- Frontend (Vercel)
+  - Variables de entorno:
+    - `NEXT_PUBLIC_API_BASE`: URL base del backend, por ej. `https://tu-backend.onrender.com/api`
+  - Construccion: `npm run build`
+
+- Backend (Render/Railway/Fly)
+  - Variables de entorno:
+    - `PORT`: 4000
+    - `DB_PATH`: ruta al archivo sqlite (en Render usa un disco persistente, por ej. `/var/data/database.sqlite`)
+    - `NODE_ENV`: `production`
+    - `CORS_ORIGIN`: opcional; si no se define, el backend refleja el `Origin` de la solicitud (compatible con credenciales)
+  - Asignar un volumen/disco para persistir la base de datos.
+
+Notas
+
+- El paquete `better-sqlite3` no es compatible con lambdas serverless de Vercel. Por eso se recomienda desplegar el backend en un servicio con proceso persistente (Render/Railway/Fly) y el frontend en Vercel apuntando al backend via `NEXT_PUBLIC_API_BASE`.
+- Cookies de sesion: en produccion se envian con `SameSite=None; Secure` y CORS con `credentials: true`. Asegurate de que el dominio de Vercel este incluido via `CORS_ORIGIN` o usando el modo "reflect" por defecto.
 
 ### Subida de archivos
 - Acepta `.xlsx` y `.csv`.

@@ -56,12 +56,14 @@ function login(req, res) {
   const ok = bcrypt.compareSync(String(password), user.password_hash);
   if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
   const token = signToken({ id: user.id, role: user.role, name: user.name, username: user.username, email: user.email });
-  res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 7 * 24 * 3600 * 1000 });
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('token', token, { httpOnly: true, sameSite: isProd ? 'none' : 'lax', secure: isProd, maxAge: 7 * 24 * 3600 * 1000 });
   res.json({ ok: true });
 }
 
 function logout(_req, res) {
-  res.clearCookie('token');
+  const isProd = process.env.NODE_ENV === 'production';
+  res.clearCookie('token', { sameSite: isProd ? 'none' : 'lax', secure: isProd });
   res.json({ ok: true });
 }
 
@@ -107,7 +109,8 @@ function updateUser(req, res) {
       const u = db.prepare(`SELECT id, role, name, username, email FROM users WHERE id=?`).get(id);
       if (u && req.user && Number(req.user.id) === id) {
         const token = signToken({ id: u.id, role: u.role, name: u.name, username: u.username, email: u.email });
-        res.cookie('token', token, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 7 * 24 * 3600 * 1000 });
+        const isProd = process.env.NODE_ENV === 'production';
+        res.cookie('token', token, { httpOnly: true, sameSite: isProd ? 'none' : 'lax', secure: isProd, maxAge: 7 * 24 * 3600 * 1000 });
       }
     } catch {}
     res.json({ ok: true });

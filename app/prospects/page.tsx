@@ -8,8 +8,7 @@ export default function ProspectsPage() {
   const [q, setQ] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [date, setDate] = React.useState('');
-  const [exclude, setExclude] = React.useState(true);
-  const [onlyUnwanted, setOnlyUnwanted] = React.useState(false);
+  // "Solo no-leads" removido: solo dejamos filtro de duplicados
   const [uploadId, setUploadId] = React.useState('');
   const [srcFilter, setSrcFilter] = React.useState('');
   const [acctFilter, setAcctFilter] = React.useState('');
@@ -19,8 +18,8 @@ export default function ProspectsPage() {
 
   const uploads = useSWR('/uploads', () => api.get('/uploads').then(r=>r.data));
   const { data } = useSWR(
-    apiUrl(`/prospects?q=${encodeURIComponent(q)}&status=${status}&date=${date}&exclude_unwanted=${exclude ? '1' : '0'}&only_unwanted=${onlyUnwanted ? '1' : '0'}&upload_id=${uploadId}&source=${encodeURIComponent(srcFilter)}&account=${encodeURIComponent(acctFilter)}&duplicates=${showDup ? '1':'0'}&limit=${limit}&offset=${page*limit}`),
-    () => api.get(`/prospects`, { params: { q, status, date, exclude_unwanted: exclude ? '1':'0', only_unwanted: onlyUnwanted ? '1':'0', upload_id: uploadId || undefined, source: srcFilter || undefined, account: acctFilter || undefined, duplicates: showDup ? '1' : undefined, limit, offset: page*limit } }).then(r => r.data)
+    apiUrl(`/prospects?q=${encodeURIComponent(q)}&status=${status}&date=${date}&upload_id=${uploadId}&source=${encodeURIComponent(srcFilter)}&account=${encodeURIComponent(acctFilter)}&duplicates=${showDup ? '1':'0'}&limit=${limit}&offset=${page*limit}`),
+    () => api.get(`/prospects`, { params: { q, status, date, upload_id: uploadId || undefined, source: srcFilter || undefined, account: acctFilter || undefined, duplicates: showDup ? '1' : undefined, limit, offset: page*limit } }).then(r => r.data)
   );
 
   const items = data?.items || [];
@@ -33,7 +32,7 @@ export default function ProspectsPage() {
         <h1 className="text-2xl font-semibold">Datos</h1>
         <div className="text-sm text-white/70">Total: {total}</div>
 
-        <div className="card p-4 grid grid-cols-2 md:grid-cols-9 gap-3 items-end">
+        <div className="card p-4 grid grid-cols-2 md:grid-cols-8 gap-3 items-end">
           <L label="Buscar"><input className="input w-full" value={q} onChange={e => setQ(e.target.value)} placeholder="usuario o nombre" /></L>
           <L label="Estado">
             <select className="input w-full" value={status} onChange={e => setStatus(e.target.value)}>
@@ -56,7 +55,7 @@ export default function ProspectsPage() {
           <L label="Fuente">
             <select className="input w-full" value={srcFilter} onChange={e=>{ setSrcFilter(e.target.value); setPage(0); }}>
               <option value="">Todas</option>
-              {Array.from(new Set((uploads.data?.uploads||[]).map((u:any)=>u.source).filter(Boolean))).map((s:string)=>(
+              {Array.from(new Set<string>((uploads.data?.uploads||[]).map((u:any)=>u.source as string).filter(Boolean) as string[])).map((s:string)=>(
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
@@ -64,12 +63,11 @@ export default function ProspectsPage() {
           <L label="Cuenta">
             <select className="input w-full" value={acctFilter} onChange={e=>{ setAcctFilter(e.target.value); setPage(0); }}>
               <option value="">Todas</option>
-              {Array.from(new Set((uploads.data?.uploads||[]).map((u:any)=>u.instagram_account).filter(Boolean))).map((s:string)=>(
+              {Array.from(new Set<string>((uploads.data?.uploads||[]).map((u:any)=>u.instagram_account as string).filter(Boolean) as string[])).map((s:string)=>(
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </L>
-          <L label="Filtrar no deseados"><input type="checkbox" checked={exclude} onChange={e => setExclude(e.target.checked)} /></L>
         </div>
 
         <div className="card p-4">

@@ -11,7 +11,10 @@ let PORT = Number(process.env.PORT) || 4000;
 ensureDb();
 
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+const isProd = process.env.NODE_ENV === 'production';
+const CORS_ORIGIN = process.env.CORS_ORIGIN || true; // string URL or true (reflect request)
+app.set('trust proxy', 1);
+app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 

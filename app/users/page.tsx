@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React from 'react';
 import useSWR from 'swr';
 import { api } from '../../lib/api';
@@ -66,7 +66,7 @@ export default function UsersPage(){
           <div>Total: {filtered.length}</div>
           <div className="flex gap-2 items-center">
             <button className="btn-outline" disabled={page<=0} onClick={()=> setPage(p=>Math.max(0,p-1))}>Anterior</button>
-            <span>Página {page+1} / {pages}</span>
+            <span>Pagina {page+1} / {pages}</span>
             <button className="btn-outline" disabled={page>=pages-1} onClick={()=> setPage(p=>Math.min(pages-1,p+1))}>Siguiente</button>
           </div>
         </div>
@@ -215,7 +215,7 @@ function CreateUserModal({ onClose, onSaved }:{ onClose:()=>void, onSaved:()=>vo
             <input type="number" min={0} step={0.01} className="input w-full" value={hourly} onChange={e=>setHourly(Number(e.target.value)||0)} />
           </label>
           <label className="text-sm block">
-            <div className="text-white/70 mb-1">Contraseña</div>
+            <div className="text-white/70 mb-1">Contrasena</div>
             <input type="password" className="input w-full" value={password} onChange={e=>setPassword(e.target.value)} required />
           </label>
           {error && <div className="text-sm text-red-400">{error}</div>}
@@ -228,3 +228,5 @@ function CreateUserModal({ onClose, onSaved }:{ onClose:()=>void, onSaved:()=>vo
     </div>
   );
 }
+
+

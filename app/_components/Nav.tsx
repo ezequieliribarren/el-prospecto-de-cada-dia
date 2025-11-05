@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { api, ensureApiBase } from '../../lib/api';
@@ -26,7 +26,7 @@ export default function Nav() {
       {role === 'admin' && (<>
         <a href="/upload" className="text-white/80 hover:text-white">Cargar</a>
         <a href="/prospects" className="text-white/80 hover:text-white">Datos</a>
-        <a href="/uncategorized" className="text-white/80 hover:text-white">Sin categoría</a>
+        <a href="/uncategorized" className="text-white/80 hover:text-white">Sin categoria</a>
         <a href="/no-leads" className="text-white/80 hover:text-white">No-Leads</a>
         <a href="/sent" className="text-white/80 hover:text-white">Enviados</a>
         <a href="/users" className="text-white/80 hover:text-white">Usuarios</a>
@@ -46,3 +46,5 @@ export default function Nav() {
     </div>
   );
 }
+
+

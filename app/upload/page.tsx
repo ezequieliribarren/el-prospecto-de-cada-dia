@@ -45,7 +45,7 @@ export default function UploadPage() {
           <select className="input" value={source} onChange={(e)=>setSource(e.target.value)}>
             <option value="instant scrapper">Instant Scrapper</option>
             <option value="mailerfind">Mailerfind</option>
-            <option value="generic">Genérico</option>
+            <option value="generic">Generico</option>
           </select>
         </label>
         <label className="text-sm">
@@ -63,10 +63,10 @@ export default function UploadPage() {
           </label>
         )}
         <label className="text-sm">
-          <div className="text-white/70 mb-1">Categoría</div>
+          <div className="text-white/70 mb-1">Categoria</div>
           <select className="input" value={category} onChange={(e)=>setCategory(e.target.value)}>
             <option value="lead">Leads</option>
-            <option value="sin_categoria">Sin categoría</option>
+            <option value="sin_categoria">Sin categoria</option>
           </select>
         </label>
         <input
@@ -79,7 +79,7 @@ export default function UploadPage() {
           disabled={!file || loading}
           className="btn disabled:opacity-60"
         >
-          {loading ? 'Procesando…' : 'Subir y procesar'}
+          {loading ? 'Procesando...' : 'Subir y procesar'}
         </button>
       </form>
 
@@ -90,12 +90,15 @@ export default function UploadPage() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <Stat label="Filas procesadas" value={result.processed} />
-              <Stat label="Únicos (archivo)" value={result.unique} />
+              <Stat label="Unicos (archivo)" value={result.unique} />
               <Stat label="Insertados (nuevos)" value={result.inserted} />
               <Stat label="Total en base" value={result.total_prospects} />
               <Stat label="Marcados no deseados" value={result.unwanted_marked} />
               {result.skipped_no_username != null && (
                 <Stat label="Saltados (sin usuario)" value={result.skipped_no_username} />
+              )}
+              {result.duplicates != null && (
+                <Stat label="Duplicados" value={result.duplicates} />
               )}
             </div>
           )}
@@ -124,7 +127,7 @@ export default function UploadPage() {
             <tbody>
               {(uploads.data?.uploads || []).map((u:any)=>(
                 <tr key={u.id} className="border-b border-white/10">
-                  <td className="py-2 pr-4">{new Date(u.created_at).toLocaleString()}</td>
+                  <td className="py-2 pr-4">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="py-2 pr-4">{u.filename}</td>
                   <td className="py-2 pr-4 capitalize">{u.source || '-'}</td>
                   <td className="py-2 pr-4 capitalize">{u.network || '-'}</td>
@@ -160,9 +163,9 @@ export default function UploadPage() {
           </table>
         </div>
         <div className="mt-4 text-sm text-white/80">
-          <div className="mb-2">¿Cargas antiguas sin tracking? Puedes purgarlas:</div>
+          <div className="mb-2">Cargas antiguas sin tracking? Puedes purgarlas:</div>
           <button className="btn-outline" onClick={async ()=>{
-            if(confirm('Esto eliminará TODOS los prospects y planes antiguos sin upload_id. ¿Continuar?')){
+            if(confirm('Esto eliminara TODOS los prospects y planes antiguos sin upload_id. Continuar?')){
               const r = await api.delete('/uploads/legacy/all');
               alert(`Eliminados: ${r.data.deleted_prospects} prospects, ${r.data.deleted_plans} planes`);
               uploads.mutate();

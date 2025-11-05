@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Nav from "./_components/Nav";
@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "El Prospecto de Cada Día",
+  title: "El Prospecto de Cada Dia",
   description: "Dashboard para mensajes de Instagram",
 };
 
@@ -38,3 +38,6 @@ export default function RootLayout({
     </html>
   );
 }
+
+
+
