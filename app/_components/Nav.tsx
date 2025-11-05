@@ -25,10 +25,11 @@ export default function Nav() {
       <a href="/dashboard" className="text-white/80 hover:text-white">Dashboard</a>
       {role === 'admin' && (<>
         <a href="/upload" className="text-white/80 hover:text-white">Cargar</a>
-        <a href="/prospects" className="text-white/80 hover:text-white">Leads</a>
+        <a href="/prospects" className="text-white/80 hover:text-white">Datos</a>
+        <a href="/uncategorized" className="text-white/80 hover:text-white">Sin categoría</a>
         <a href="/no-leads" className="text-white/80 hover:text-white">No-Leads</a>
         <a href="/sent" className="text-white/80 hover:text-white">Enviados</a>
-        <a href="/admin/users" className="text-white/80 hover:text-white">Usuarios</a>
+        <a href="/users" className="text-white/80 hover:text-white">Usuarios</a>
       </>)}
       <a href="/plan" className="ml-auto font-semibold" style={{ color: 'var(--accent)' }}>Enviar</a>
       <span className="inline-flex items-center gap-3">

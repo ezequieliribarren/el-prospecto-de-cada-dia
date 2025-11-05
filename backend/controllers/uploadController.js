@@ -120,6 +120,60 @@ function normalizeRecord(row) {
   };
 }
 
+function rowsFromSheetInstantScrapper(sheet){
+  const out = [];
+  try {
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const cellHref = sheet[XLSX.utils.encode_cell({ r, c: 0 })]; // Columna A
+      const cellUser = sheet[XLSX.utils.encode_cell({ r, c: 3 })]; // Columna D
+      const href = (cellHref && String(cellHref.v).trim()) || '';
+      const usuario = (cellUser && String(cellUser.v).trim()) || '';
+      if (!href && !usuario) continue;
+      out.push({ href, usuario });
+    }
+  } catch(_) {}
+  return out;
+}
+
+function detectInstantScrapper(sheet){
+  try {
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
+    let matches = 0, checked = 0;
+    for (let r = range.s.r; r <= Math.min(range.e.r, range.s.r + 50); r++) {
+      const cellHref = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
+      const cellUser = sheet[XLSX.utils.encode_cell({ r, c: 3 })];
+      const href = (cellHref && String(cellHref.v).trim()) || '';
+      const usuario = (cellUser && String(cellUser.v).trim()) || '';
+      if (!href && !usuario) continue;
+      checked++;
+      if (/instagram\.com\//i.test(href) && /^[a-z0-9_.@]{3,}$/i.test(usuario)) matches++;
+    }
+    return checked > 0 && matches / checked >= 0.5; // heuristic
+  } catch { return false; }
+}
+
+function rowsFromSheetMailerfind(sheet){
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  return rows.map((row) => {
+    let href = '';
+    let usuario = '';
+    for (const [k0, v0] of Object.entries(row)){
+      const k = String(k0).toLowerCase();
+      const v = (v0 ?? '').toString().trim();
+      if (!v) continue;
+      if (!href && (/instagram/.test(k) || /url|link|profile/.test(k) || /ig/.test(k)) && /instagram\.com\//i.test(v)) {
+        href = v;
+      }
+      if (!usuario && (/username|handle|usuario|instagram|ig/.test(k))) {
+        if (/^@?[a-z0-9._]{3,}$/i.test(v)) usuario = v;
+      }
+      if (!href && /instagram\.com\//i.test(v)) href = v;
+    }
+    return { ...row, href, usuario };
+  });
+}
+
 async function handleUpload(req, res) {
   try {
     if (!req.file) {
@@ -127,33 +181,86 @@ async function handleUpload(req, res) {
     }
     const buf = req.file.buffer;
     const db = getDb();
+    // Ensure schema columns exist (self-migrate if needed)
+    try { db.prepare("SELECT network FROM uploads LIMIT 1").get(); } catch { try { db.exec("ALTER TABLE uploads ADD COLUMN network TEXT"); } catch {} }
+    try { db.prepare("SELECT instagram_account FROM uploads LIMIT 1").get(); } catch { try { db.exec("ALTER TABLE uploads ADD COLUMN instagram_account TEXT"); } catch {} }
+    try { db.prepare("SELECT duplicates_count FROM uploads LIMIT 1").get(); } catch { try { db.exec("ALTER TABLE uploads ADD COLUMN duplicates_count INTEGER DEFAULT 0"); } catch {} }
+    try { db.prepare("SELECT 1 FROM upload_duplicates LIMIT 1").get(); } catch {
+      try { db.exec("CREATE TABLE IF NOT EXISTS upload_duplicates (id INTEGER PRIMARY KEY AUTOINCREMENT, upload_id INTEGER NOT NULL, username TEXT, full_name TEXT, href TEXT, source TEXT, network TEXT, instagram_account TEXT, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (upload_id) REFERENCES uploads(id))"); } catch {}
+    }
+    // Ensure upload_duplicates has new columns if table already existed without them
+    try {
+      const dupInfo = db.prepare(`PRAGMA table_info(upload_duplicates)`).all();
+      const dupCols = new Set(dupInfo.map(r => r.name));
+      if (!dupCols.has('network')) { try { db.exec("ALTER TABLE upload_duplicates ADD COLUMN network TEXT"); } catch {} }
+      if (!dupCols.has('instagram_account')) { try { db.exec("ALTER TABLE upload_duplicates ADD COLUMN instagram_account TEXT"); } catch {} }
+    } catch {}
+    // Ensure prospects has 'category' column for insert
+    try { db.prepare("SELECT category FROM prospects LIMIT 1").get(); } catch {
+      try { db.exec("ALTER TABLE prospects ADD COLUMN category TEXT DEFAULT 'lead'"); } catch {}
+    }
     // create upload record
-    const insUpload = db.prepare(`INSERT INTO uploads(filename, mime, size, processed, unique_count, inserted, unwanted_count, skipped_no_username) VALUES(?,?,?,?,?,?,?,?)`);
+    // Prepare dynamic INSERT for uploads to tolerate older schemas
     const uploadInfo = {
       filename: req.file.originalname || 'upload.xlsx',
       mime: req.file.mimetype || '',
       size: req.file.size || buf.length || 0,
     };
-    const uploadId = insUpload.run(uploadInfo.filename, uploadInfo.mime, uploadInfo.size, 0, 0, 0, 0, 0).lastInsertRowid;
+    // Read workbook to optionally auto-detect source
     const wb = XLSX.read(buf, { type: 'buffer' });
     const sheetName = wb.SheetNames[0];
     const sheet = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    let sourceIn = (req.body && req.body.source ? String(req.body.source) : '').toLowerCase();
+    if (!sourceIn && detectInstantScrapper(sheet)) sourceIn = 'instant scrapper';
+    const network = (req.body && req.body.network ? String(req.body.network) : '').toLowerCase().trim() || null;
+    const igAccount = (req.body && req.body.instagram_account ? String(req.body.instagram_account) : '').trim();
+    const colsInfo = db.prepare(`PRAGMA table_info(uploads)`).all();
+    const present = new Set(colsInfo.map(r => r.name));
+    const insCols = ['filename','mime','size'];
+    const insVals = [uploadInfo.filename, uploadInfo.mime, uploadInfo.size];
+    if (present.has('source')) { insCols.push('source'); insVals.push(sourceIn || null); }
+    if (present.has('network')) { insCols.push('network'); insVals.push(network || null); }
+    if (present.has('instagram_account')) { insCols.push('instagram_account'); insVals.push(igAccount || null); }
+    insCols.push('processed','unique_count','inserted','unwanted_count','skipped_no_username');
+    insVals.push(0,0,0,0,0);
+    if (present.has('duplicates_count')) { insCols.push('duplicates_count'); insVals.push(0); }
+    const placeholders = insCols.map(()=>'?').join(',');
+    const sqlIns = `INSERT INTO uploads(${insCols.join(',')}) VALUES(${placeholders})`;
+    const uploadId = db.prepare(sqlIns).run(...insVals).lastInsertRowid;
+    const src2 = sourceIn;
+    let rows;
+    if (src2 === 'instant scrapper') {
+      // Extrae desde columna D (usuario) y A (link)
+      rows = rowsFromSheetInstantScrapper(sheet);
+    } else if (src2 === 'mailerfind') {
+      rows = rowsFromSheetMailerfind(sheet);
+    } else {
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    }
 
-    const insert = db.prepare(`INSERT OR IGNORE INTO prospects (username, full_name, href, avatar_url, source, upload_id, unwanted) VALUES (@username, @full_name, @href, @avatar_url, @source, @upload_id, @unwanted)`);
+    const insert = db.prepare(`INSERT OR IGNORE INTO prospects (username, full_name, href, avatar_url, category, source, upload_id, unwanted) VALUES (@username, @full_name, @href, @avatar_url, @category, @source, @upload_id, @unwanted)`);
+    const hasUserStmt = db.prepare(`SELECT id FROM prospects WHERE username=?`);
+    const insDup = db.prepare(`INSERT INTO upload_duplicates(upload_id, username, full_name, href, source, network, instagram_account) VALUES(?,?,?,?,?,?,?)`);
 
     let processed = 0;
     let inserted = 0;
     let skippedNoUser = 0;
+    let duplicates = 0;
     const seen = new Set();
     const toInsert = [];
+    const selCategory = (req.body && req.body.category ? String(req.body.category).toLowerCase() : '') === 'sin_categoria' ? 'uncategorized' : 'lead';
     for (const r of rows) {
       const norm = normalizeRecord(r);
       processed += 1;
       if (!norm) { skippedNoUser += 1; continue; }
-      if (seen.has(norm.username)) continue;
-      seen.add(norm.username);
-      toInsert.push({ ...norm, upload_id: uploadId, source: `upload:${uploadId}` });
+      const uname = norm.username;
+      if (seen.has(uname) || hasUserStmt.get(uname)) {
+        duplicates += 1;
+        insDup.run(uploadId, uname, norm.full_name || null, norm.href || null, sourceIn || null, network, igAccount || null);
+        continue;
+      }
+      seen.add(uname);
+      toInsert.push({ ...norm, category: selCategory, upload_id: uploadId, source: sourceIn || `upload:${uploadId}` });
     }
 
     const tx = db.transaction((items) => {
@@ -165,14 +272,13 @@ async function handleUpload(req, res) {
     tx(toInsert);
 
     // update upload row
-    db.prepare(`UPDATE uploads SET processed=?, unique_count=?, inserted=?, unwanted_count=?, skipped_no_username=? WHERE id=?`).run(
-      processed,
-      toInsert.length,
-      inserted,
-      toInsert.filter(x => x.unwanted === 1).length,
-      skippedNoUser,
-      uploadId
-    );
+    {
+      const updCols = ['processed','unique_count','inserted','unwanted_count','skipped_no_username'];
+      const updVals = [processed, toInsert.length, inserted, toInsert.filter(x => x.unwanted === 1).length, skippedNoUser];
+      if (present.has('duplicates_count')) { updCols.push('duplicates_count'); updVals.push(duplicates); }
+      const sqlUpd = `UPDATE uploads SET ${updCols.map(c=>c+'=?').join(', ')} WHERE id=?`;
+      db.prepare(sqlUpd).run(...updVals, uploadId);
+    }
 
     res.json({
       ok: true,
@@ -183,6 +289,7 @@ async function handleUpload(req, res) {
       total_prospects: db.prepare(`SELECT COUNT(*) as c FROM prospects`).get().c,
       unwanted_marked: toInsert.filter(x => x.unwanted === 1).length,
       skipped_no_username: skippedNoUser,
+      duplicates,
     });
   } catch (e) {
     console.error(e);

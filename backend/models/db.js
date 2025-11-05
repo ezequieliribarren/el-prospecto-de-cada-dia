@@ -15,6 +15,8 @@ function ensureDb() {
       full_name TEXT,
       href TEXT,
       avatar_url TEXT,
+      category TEXT DEFAULT 'lead',
+      whatsapp_number TEXT,
       source TEXT,
       upload_id INTEGER,
       unwanted INTEGER DEFAULT 0,
@@ -50,6 +52,7 @@ function ensureDb() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('admin','sender')),
       phone_number TEXT,
+      hourly_rate REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -63,17 +66,27 @@ function ensureDb() {
       filename TEXT,
       mime TEXT,
       size INTEGER,
+      source TEXT,
+      network TEXT,
+      instagram_account TEXT,
       processed INTEGER,
       unique_count INTEGER,
       inserted INTEGER,
       unwanted_count INTEGER,
       skipped_no_username INTEGER,
+      duplicates_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
   // Columns added after initial version: ensure they exist
   try { db.prepare("SELECT avatar_url FROM prospects LIMIT 1").get(); } catch {
     try { db.exec("ALTER TABLE prospects ADD COLUMN avatar_url TEXT"); } catch {}
+  }
+  try { db.prepare("SELECT category FROM prospects LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE prospects ADD COLUMN category TEXT DEFAULT 'lead'"); } catch {}
+  }
+  try { db.prepare("SELECT whatsapp_number FROM prospects LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE prospects ADD COLUMN whatsapp_number TEXT"); } catch {}
   }
   try { db.prepare("SELECT upload_id FROM prospects LIMIT 1").get(); } catch {
     try { db.exec("ALTER TABLE prospects ADD COLUMN upload_id INTEGER"); } catch {}
@@ -87,10 +100,41 @@ function ensureDb() {
   try { db.prepare("SELECT assigned_user_id FROM plan LIMIT 1").get(); } catch {
     db.exec("ALTER TABLE plan ADD COLUMN assigned_user_id INTEGER");
   }
-  // Ensure hourly_rate default
-  const row = db.prepare(`SELECT value FROM settings WHERE key='hourly_rate'`).get();
-  if (!row) {
-    db.prepare(`INSERT INTO settings(key, value) VALUES('hourly_rate', '0')`).run();
+  try { db.prepare("SELECT source FROM uploads LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE uploads ADD COLUMN source TEXT"); } catch {}
+  }
+  try { db.prepare("SELECT network FROM uploads LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE uploads ADD COLUMN network TEXT"); } catch {}
+  }
+  try { db.prepare("SELECT instagram_account FROM uploads LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE uploads ADD COLUMN instagram_account TEXT"); } catch {}
+  }
+  try { db.prepare("SELECT duplicates_count FROM uploads LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE uploads ADD COLUMN duplicates_count INTEGER DEFAULT 0"); } catch {}
+  }
+  // Track duplicates per upload
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS upload_duplicates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      upload_id INTEGER NOT NULL,
+      username TEXT,
+      full_name TEXT,
+      href TEXT,
+      source TEXT,
+      network TEXT,
+      instagram_account TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (upload_id) REFERENCES uploads(id)
+    );
+  `);
+  // Ensure users.hourly_rate exists (migrate from settings if present)
+  try { db.prepare("SELECT hourly_rate FROM users LIMIT 1").get(); } catch {
+    try { db.exec("ALTER TABLE users ADD COLUMN hourly_rate REAL DEFAULT 0"); } catch {}
+  }
+  // Ensure per_day default (messages per sender per day)
+  const perDayRow = db.prepare(`SELECT value FROM settings WHERE key='per_day'`).get();
+  if (!perDayRow) {
+    db.prepare(`INSERT INTO settings(key, value) VALUES('per_day', '25')`).run();
   }
   return db;
 }

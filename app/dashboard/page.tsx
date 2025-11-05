@@ -18,10 +18,12 @@ export default function Dashboard() {
     <AuthGate>
       <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <CardStat label="Prospectos" value={totals.prospects || 0} />
         <CardStat label="Enviados" value={totals.sent || 0} />
         <CardStat label="Clientes" value={totals.won || 0} />
+        <CardStat label="Interesados %" value={`${(rates.interested_pct || 0).toFixed(1)}%`} />
+        <CardStat label="Cerrados %" value={`${(rates.closed_pct || 0).toFixed(1)}%`} />
         <CardStat label="Tasa conv." value={`${(rates.conversion || 0).toFixed(1)}%`} />
       </div>
 
@@ -50,7 +52,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <HourlyRate />
+      {/* Hourly rate moved to Users; editor removed from dashboard */}
       </div>
     </AuthGate>
   );
@@ -65,25 +67,4 @@ function CardStat({ label, value }: { label: string, value: any }) {
   )
 }
 
-function HourlyRate() {
-  const me = useSWR('/auth/me', () => api.get('/auth/me').then(r=>r.data));
-  const isAdmin = me.data?.user?.role === 'admin';
-  const { data, mutate } = useSWR(isAdmin ? apiUrl('/settings') : null, () => api.get('/settings').then(r => r.data));
-  const [val, setVal] = useState('');
-  useEffect(() => {
-    if (data?.hourly_rate != null) setVal(String(data.hourly_rate));
-  }, [data]);
-  if (!isAdmin) return null;
-  return (
-    <div className="card p-4">
-      <h3 className="font-semibold mb-2">Valor hora</h3>
-      <div className="flex items-center gap-2">
-        <input className="input w-40" value={val} onChange={(e) => setVal(e.target.value)} />
-        <button className="btn" onClick={async () => {
-          await api.post('/settings', { hourly_rate: Number(val) });
-          mutate();
-        }}>Guardar</button>
-      </div>
-    </div>
-  );
-}
+// HourlyRate editor removed

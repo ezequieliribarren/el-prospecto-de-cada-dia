@@ -48,3 +48,25 @@ function purgeLegacy(_req, res) {
 }
 
 module.exports.purgeLegacy = purgeLegacy;
+
+function updateUpload(req, res) {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const { source, network, instagram_account } = req.body || {};
+  const fields = {};
+  if (source !== undefined) fields.source = source ? String(source) : null;
+  if (network !== undefined) fields.network = network ? String(network) : null;
+  if (instagram_account !== undefined) fields.instagram_account = instagram_account ? String(instagram_account) : null;
+  const keys = Object.keys(fields);
+  if (!keys.length) return res.status(400).json({ error: 'Nada para actualizar' });
+  const setSql = keys.map(k => `${k}=?`).join(', ');
+  try {
+    const r = db.prepare(`UPDATE uploads SET ${setSql} WHERE id=?`).run(...keys.map(k => fields[k]), id);
+    res.json({ ok: true, updated: r.changes });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo actualizar upload' });
+  }
+}
+
+module.exports.updateUpload = updateUpload;

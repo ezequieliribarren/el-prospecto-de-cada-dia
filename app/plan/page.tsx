@@ -11,7 +11,7 @@ export default function PlanPage(){
   const [days, setDays] = React.useState(2);
   const range = useSWR(['/plan/range', start, days], () => api.get('/plan/range', { params: { start, days } }).then(r=>r.data));
   const settings = useSWR('/settings', () => api.get('/settings').then(r=>r.data));
-  const users = useSWR(me.data?.user?.role==='admin' ? '/auth/users' : null, () => api.get('/auth/users').then(r=>r.data));
+  
 
   async function startTimer(){ await api.post('/work/start'); }
   async function stopTimer(){ await api.post('/work/stop'); }
@@ -20,7 +20,7 @@ export default function PlanPage(){
     const role = me.data?.user?.role;
     if (role === 'admin') {
       // Intenta asegurar planificación de próximas semanas en background
-      api.post('/plan/auto', { days: 60 }).catch(()=>{});
+      // api.post('/plan/auto', { days: 60 }).catch(()=>{});
     }
   }, [me.data?.user?.role]);
 
@@ -30,8 +30,18 @@ export default function PlanPage(){
         <h1 className="text-2xl font-semibold">Enviar</h1>
 
         {range.data?.no_senders && (
-          <div className="card p-4 text-sm text-white/80">No hay usuarios asignados para Enviar. Ve a Usuarios y crea/selecciona enviadores.</div>
+          <div className="card p-4 text-sm text-white/80">No hay usuarios con rol sender. Crea al menos uno en Usuarios.</div>
         )}
+
+        <TopControls
+          isAdmin={me.data?.user?.role==='admin'}
+          isSender={me.data?.user?.role==='sender'}
+          perDay={settings.data?.per_day ?? 25}
+          onSavePerDay={async (n:number)=>{ await api.post('/settings', { per_day: n }); settings.mutate(); range.mutate(); }}
+          onLoadMore={()=>{ setDays(d=>d+2); range.mutate(); }}
+          onStart={startTimer}
+          onStop={stopTimer}
+        />
 
         <RangeBoard
           data={range.data}
@@ -40,12 +50,12 @@ export default function PlanPage(){
           onDelete={async (prospectId:number)=>{ await api.delete(`/prospects/${prospectId}`); range.mutate(); }}
         />
 
-        <div className="flex items-center gap-2">
+        <div className="hidden">
           <button className="btn-outline" onClick={()=>{ setDays(d=>d+2); range.mutate(); }}>Cargar +2 días</button>
           {me.data?.user?.role==='admin' && (
             <>
-              <button className="btn-outline" onClick={async ()=>{ await api.post('/plan/auto', { days: 60 }); range.mutate(); }}>Auto-planificar</button>
-              <AssignSenders users={users.data?.users || []} settings={settings.data} onSave={async (ids:number[])=>{ await api.post('/settings', { active_senders: ids }); settings.mutate(); range.mutate(); }} />
+              {/* Auto-planificar removido */}
+              {/* Asignar usuarios removido: se asignan automáticamente */}
             </>
           )}
           <div className="ml-auto flex gap-2">
@@ -63,6 +73,8 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
   const today = dayjs().format('YYYY-MM-DD');
   const dates: string[] = data.dates || [];
   const items = data.items || [];
+  const [copied, setCopied] = React.useState<Record<number, boolean>>({});
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   const byDay: Record<string, any[]> = Object.fromEntries(dates.map(d=>[d,[]]));
   for (const it of items){ if (byDay[it.date]) byDay[it.date].push(it); }
 
@@ -82,7 +94,15 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
         const locked = date !== today; // sólo hoy clickeable; resto visible pero bloqueado
         return (
           <div key={date} className="card p-4">
-            <div className="text-white/90 font-semibold mb-3">{fmtDate(date)}</div>
+            <div className="flex items-center justify-between text-white/90 font-semibold mb-3">
+              <span>{fmtDate(date)}</span>
+              <button
+                className="text-sm text-white/70 hover:text-white"
+                onClick={()=> setCollapsed(prev => ({ ...prev, [date]: !prev[date] }))}
+                aria-label={collapsed[date] ? 'Expandir día' : 'Colapsar día'}
+              >{collapsed[date] ? '▶' : '▼'}</button>
+            </div>
+            {!collapsed[date] && (
             <div className="grid grid-cols-1 gap-4">
               {Object.entries(groups).map(([owner, arr]) => (
                 <div key={owner} className="rounded-lg border border-white/10">
@@ -94,7 +114,14 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
                       const clickable = mine && (!locked || user?.role==='admin');
                       return (
                         <div key={it.plan_id} className={`grid grid-cols-3 gap-2 items-center px-3 py-2 border-t border-white/10 ${mine ? 'shadow-[0_0_0_1px_rgba(46,255,126,0.25)]' : 'opacity-60'} `}>
-                          <div className="truncate">{it.full_name || '@'+it.username}</div>
+                          <div className="truncate">
+                            <div>{it.full_name || '@'+it.username}</div>
+                            <div className="text-xs text-white/60">
+                              Carga: {it.upload_created_at ? new Date(it.upload_created_at).toLocaleDateString() : '-'}
+                              {' '}
+                              • Cuenta: {it.upload_instagram_account || '-'}
+                            </div>
+                          </div>
                           <div className="text-sm capitalize">{it.status}</div>
                           <div className="flex justify-end gap-2">
                             <a
@@ -107,6 +134,18 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
                                 setTimeout(()=>onMark(it.plan_id,'sent'), 0);
                               }}
                             >Ir</a>
+                            <button
+                              className={`btn-outline ${clickable ? '' : 'pointer-events-none opacity-60'}`}
+                              onClick={async ()=>{
+                                if (!clickable) return;
+                                try {
+                                  await navigator.clipboard.writeText(it.href);
+                                  setCopied(prev => ({ ...prev, [it.plan_id]: true }));
+                                  setTimeout(() => setCopied(prev => ({ ...prev, [it.plan_id]: false })), 1500);
+                                  setTimeout(()=>onMark(it.plan_id,'sent'), 0);
+                                } catch {}
+                              }}
+                            >{copied[it.plan_id] ? 'Copiado!' : 'Copiar'}</button>
                             {user?.role==='admin' && (
                               <button className="btn-outline" onClick={async ()=>{ await onDelete(it.prospect_id); }}>Eliminar</button>
                             )}
@@ -118,6 +157,7 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
                 </div>
               ))}
             </div>
+            )}
           </div>
         );
       })}
@@ -135,18 +175,39 @@ function HeaderRow(){
   );
 }
 
-function AssignSenders({ users, settings, onSave }: { users:any[], settings:any, onSave:(ids:number[])=>Promise<void> }){
-  const [sel, setSel] = React.useState<number[]>([]);
+function TopControls({ isAdmin, isSender, perDay, onSavePerDay, onLoadMore, onStart, onStop }:{ isAdmin:boolean, isSender:boolean, perDay:number, onSavePerDay:(n:number)=>Promise<void>, onLoadMore:()=>void, onStart:()=>Promise<void>, onStop:()=>Promise<void> }){
+  const [val, setVal] = React.useState<number>(perDay || 25);
+  React.useEffect(()=>{ setVal(perDay || 25); }, [perDay]);
+  const { data, mutate } = useSWR('/work/status', () => api.get('/work/status').then(r=>r.data));
+  const active = !!data?.active;
+  const [elapsed, setElapsed] = React.useState<number>(data?.elapsed_sec || 0);
   React.useEffect(()=>{
-    if (settings?.active_senders) setSel(settings.active_senders);
-  }, [settings?.active_senders]);
-  const senders = (users||[]).filter((u:any)=>u.role==='sender');
+    if (!active) { setElapsed(0); return; }
+    setElapsed(data?.elapsed_sec || 0);
+    const id = setInterval(()=> setElapsed(e=>e+1), 1000);
+    return ()=> clearInterval(id);
+  }, [active, data?.elapsed_sec]);
+  function fmt(sec:number){ const m = Math.floor(sec/60); const s = sec%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }
   return (
     <div className="flex items-center gap-2">
-      <select className="input" multiple value={sel.map(String)} onChange={e=>{ const ids = Array.from(e.target.selectedOptions).map(o=>Number(o.value)); setSel(ids); }}>
-        {senders.map((u:any)=>(<option key={u.id} value={u.id}>{u.username}</option>))}
-      </select>
-      <button className="btn" onClick={()=>onSave(sel)}>Asignar usuarios</button>
+      {isAdmin && (
+        <label className="text-sm flex items-end gap-2">
+          <span className="text-white/70 mb-1">Mensajes/día por sender</span>
+          <input type="number" min={1} className="input w-24" value={val} onChange={e=>setVal(Number(e.target.value)||1)} />
+          <button className="btn" onClick={()=>onSavePerDay(val)}>Guardar</button>
+        </label>
+      )}
+      <button className="btn-outline" onClick={onLoadMore}>Cargar +2 días</button>
+      {isSender && (
+        <div className="ml-auto flex items-center gap-2">
+          <div className="text-sm text-white/70">{active ? fmt(elapsed) : '00:00'}</div>
+          {!active ? (
+            <button className="btn-outline" onClick={async ()=>{ await onStart(); mutate(); }}>Iniciar cronómetro</button>
+          ) : (
+            <button className="btn-outline" onClick={async ()=>{ await onStop(); mutate(); }}>Detener</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

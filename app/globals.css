@@ -56,3 +56,18 @@ body {
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
 }
+
+/* Ensure dropdowns use dark theme as well */
+select.input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: rgba(255,255,255,0.08);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+select.input:focus { outline: none; }
+select.input option {
+  background-color: #1c1140; /* match background */
+  color: var(--text);
+}
