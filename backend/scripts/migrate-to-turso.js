@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 // Migrate data from local SQLite file to Turso (libSQL)
 // Usage:
 //   LIBSQL_URL=... LIBSQL_AUTH_TOKEN=... node backend/scripts/migrate-to-turso.js [SOURCE_DB_PATH]
@@ -68,4 +69,3 @@ async function main(){
 }
 
 main().catch(err=>{ console.error(err); process.exit(1); });
-
