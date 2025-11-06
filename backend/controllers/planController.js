@@ -244,7 +244,7 @@ async function getRangePlan(req, res) {
     const to = dates[dates.length-1];
     let rows;
     if (req.user?.role === 'sender') {
-      rows = await db.prepare(`
+      const tmp = await db.prepare(`
       SELECT pl.id as plan_id, pl.date, pl.account_label, pl.status, pl.assigned_user_id,
              p.id as prospect_id, p.username, p.full_name, p.href,
              u.username as assigned_username, u.name as assigned_name,
@@ -255,12 +255,13 @@ async function getRangePlan(req, res) {
       LEFT JOIN uploads uu ON uu.id = p.upload_id
       WHERE pl.date BETWEEN ? AND ? AND pl.assigned_user_id = ?
       ORDER BY pl.date, COALESCE(u.username, pl.account_label), p.username
-    `).all(from, to, req.user.id).filter(r => dates.includes(r.date));
+    `).all([from, to, req.user.id]);
+      rows = (tmp || []).filter(r => dates.includes(r.date));
     } else {
       const senderIds = senders.map(s=>s.id);
       if (!senderIds.length) return res.json({ ok: true, dates, items: [], no_senders: true });
       const inQ = senderIds.map(()=>'?').join(',');
-      rows = await db.prepare(`
+      const tmp = await db.prepare(`
       SELECT pl.id as plan_id, pl.date, pl.account_label, pl.status, pl.assigned_user_id,
              p.id as prospect_id, p.username, p.full_name, p.href,
              u.username as assigned_username, u.name as assigned_name,
@@ -271,7 +272,8 @@ async function getRangePlan(req, res) {
       LEFT JOIN uploads uu ON uu.id = p.upload_id
       WHERE pl.date BETWEEN ? AND ? AND pl.assigned_user_id IN (${inQ})
       ORDER BY pl.date, COALESCE(u.username, pl.account_label), p.username
-    `).all(from, to, ...senderIds).filter(r => dates.includes(r.date));
+    `).all([from, to, ...senderIds]);
+      rows = (tmp || []).filter(r => dates.includes(r.date));
     }
 
     return res.json({ ok: true, dates, items: rows, no_senders: senders.length === 0 });
