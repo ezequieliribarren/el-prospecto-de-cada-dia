@@ -18,11 +18,17 @@ function mkBetterAdapter(filePath) {
     async exec(sql) { raw.exec(sql); },
     prepare(sql) {
       const st = raw.prepare(sql);
+      const spread = (args) => {
+        if (!args || args.length === 0) return [];
+        if (args.length === 1 && Array.isArray(args[0])) return args[0];
+        return args;
+      };
       return {
-        async get(params){ return st.get(params); },
-        async all(params){ return st.all(params); },
+        async get(...args){ const a = spread(args); return a.length ? st.get(...a) : st.get(); },
+        async all(...args){ const a = spread(args); return a.length ? st.all(...a) : st.all(); },
         async run(...args){
-          const r = args.length === 1 ? st.run(args[0]) : st.run(...args);
+          const a = spread(args);
+          const r = a.length ? st.run(...a) : st.run();
           return { changes: r.changes, lastInsertRowid: r.lastInsertRowid };
         }
       };
@@ -49,12 +55,16 @@ function mkLibsqlAdapter(url, token){
       }
     },
     prepare(sql){
+      const norm = (args) => {
+        if (!args || args.length === 0) return undefined;
+        if (args.length === 1 && Array.isArray(args[0])) return args[0];
+        return args;
+      };
       return {
-        async get(params){ const r = await client.execute({ sql, args: params }); return r.rows?.[0] || undefined; },
-        async all(params){ const r = await client.execute({ sql, args: params }); return r.rows || []; },
+        async get(...args){ const r = await client.execute({ sql, args: norm(args) }); return r.rows?.[0] || undefined; },
+        async all(...args){ const r = await client.execute({ sql, args: norm(args) }); return r.rows || []; },
         async run(...args){
-          const params = args.length === 1 ? args[0] : args;
-          const r = await client.execute({ sql, args: params });
+          const r = await client.execute({ sql, args: norm(args) });
           return { changes: r.rowsAffected || 0, lastInsertRowid: r.lastInsertRowid };
         },
       };
