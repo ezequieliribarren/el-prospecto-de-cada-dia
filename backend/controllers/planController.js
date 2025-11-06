@@ -129,7 +129,7 @@ async function getRangePlan(req, res) {
     // Ensure required columns exist (robusto ante esquemas antiguos)
     try {
       const info = await db.prepare(`PRAGMA table_info(plan)`).all();
-      const cols = new Set((info||[]).map((r:any)=>r.name));
+      const cols = new Set((info||[]).map((r)=>r.name));
       if (!cols.has('assigned_user_id')) await db.exec(`ALTER TABLE plan ADD COLUMN assigned_user_id INTEGER`);
       if (!cols.has('updated_by_user_id')) await db.exec(`ALTER TABLE plan ADD COLUMN updated_by_user_id INTEGER`);
     } catch {}
