@@ -124,19 +124,20 @@ function buildNextWeekdays(startStr, daysCount) {
 }
 
 async function getRangePlan(req, res) {
-  const db = getDb();
-  const start = req.query.start || dayjs().format('YYYY-MM-DD');
-  const daysN = Math.max(1, Math.min(60, Number(req.query.days) || 2));
-  const dates = buildNextWeekdays(start, daysN);
-  const perDay = Number(((await db.prepare(`SELECT value FROM settings WHERE key='per_day'`).get())||{value:'25'}).value) || 25;
-  // Use all current senders; ignore legacy active_senders setting
-  const senders = await db.prepare(`SELECT id, username FROM users WHERE role='sender'`).all();
+  try {
+    const db = getDb();
+    const start = req.query.start || dayjs().format('YYYY-MM-DD');
+    const daysN = Math.max(1, Math.min(60, Number(req.query.days) || 2));
+    const dates = buildNextWeekdays(start, daysN);
+    const perDay = Number(((await db.prepare(`SELECT value FROM settings WHERE key='per_day'`).get())||{value:'25'}).value) || 25;
+    // Use all current senders; ignore legacy active_senders setting
+    const senders = await db.prepare(`SELECT id, username FROM users WHERE role='sender'`).all();
 
-  if (!senders.length) {
-    return res.json({ ok: true, dates, items: [], no_senders: true });
-  }
+    if (!senders.length) {
+      return res.json({ ok: true, dates, items: [], no_senders: true });
+    }
 
-  if (senders.length) {
+    if (senders.length) {
     const countAllStmt = db.prepare(`SELECT COUNT(*) as c FROM plan WHERE date=? AND assigned_user_id=?`);
     const pendingIdsForDateStmt = db.prepare(`SELECT id FROM plan WHERE date=? AND assigned_user_id=? AND status='pending' ORDER BY id DESC`);
     const backlogOldStmt = db.prepare(`SELECT id FROM plan WHERE assigned_user_id=? AND status='pending' AND date < ? ORDER BY date ASC, id ASC`);
@@ -155,7 +156,7 @@ async function getRangePlan(req, res) {
       return d.format('YYYY-MM-DD');
     }
 
-    for (const s of senders) {
+      for (const s of senders) {
         // 1) Move backlog (older than first date) forward into the range respecting perDay per date
         let backlog = (await backlogOldStmt.all(s.id, dates[0])).map(r=>r.id);
         if (backlog.length) {
@@ -221,13 +222,13 @@ async function getRangePlan(req, res) {
           }
         }
       }
-  }
+    }
 
-  const from = dates[0];
-  const to = dates[dates.length-1];
-  let rows;
-  if (req.user?.role === 'sender') {
-    rows = await db.prepare(`
+    const from = dates[0];
+    const to = dates[dates.length-1];
+    let rows;
+    if (req.user?.role === 'sender') {
+      rows = await db.prepare(`
       SELECT pl.id as plan_id, pl.date, pl.account_label, pl.status, pl.assigned_user_id,
              p.id as prospect_id, p.username, p.full_name, p.href,
              u.username as assigned_username, u.name as assigned_name,
@@ -239,10 +240,11 @@ async function getRangePlan(req, res) {
       WHERE pl.date BETWEEN ? AND ? AND pl.assigned_user_id = ?
       ORDER BY pl.date, COALESCE(u.username, pl.account_label), p.username
     `).all(from, to, req.user.id).filter(r => dates.includes(r.date));
-  } else {
-    const senderIds = senders.map(s=>s.id);
-    const inQ = senderIds.map(()=>'?').join(',');
-    rows = await db.prepare(`
+    } else {
+      const senderIds = senders.map(s=>s.id);
+      if (!senderIds.length) return res.json({ ok: true, dates, items: [], no_senders: true });
+      const inQ = senderIds.map(()=>'?').join(',');
+      rows = await db.prepare(`
       SELECT pl.id as plan_id, pl.date, pl.account_label, pl.status, pl.assigned_user_id,
              p.id as prospect_id, p.username, p.full_name, p.href,
              u.username as assigned_username, u.name as assigned_name,
@@ -254,9 +256,13 @@ async function getRangePlan(req, res) {
       WHERE pl.date BETWEEN ? AND ? AND pl.assigned_user_id IN (${inQ})
       ORDER BY pl.date, COALESCE(u.username, pl.account_label), p.username
     `).all(from, to, ...senderIds).filter(r => dates.includes(r.date));
-  }
+    }
 
-  res.json({ ok: true, dates, items: rows, no_senders: senders.length === 0 });
+    return res.json({ ok: true, dates, items: rows, no_senders: senders.length === 0 });
+  } catch (e) {
+    console.error('[plan/range] error:', e);
+    return res.status(500).json({ error: 'plan_range_failed', detail: String(e?.message||e) });
+  }
 }
 
 async function autoGenerate(req, res) {
