@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const fs = require('fs');
+const BetterDB = require('better-sqlite3');
 
 const apiRoutes = require('./routes');
 const { ensureDb } = require('./models/db');
@@ -56,7 +58,53 @@ function startServer(port, attemptsLeft = 5) {
 // Ensure DB initialized before listening
 (async () => {
   try {
-    await ensureDb();
+    const adapter = await ensureDb();
+
+    // Optional one-shot migration from a bundled SQLite file to Turso on boot
+    if (process.env.MIGRATE_ON_BOOT && process.env.LIBSQL_URL) {
+      try {
+        const srcPath = process.env.MIGRATE_FROM_SQLITE_PATH || path.join(__dirname, 'database.sqlite');
+        if (fs.existsSync(srcPath)) {
+          const hasUsers = await adapter.prepare(`SELECT COUNT(*) as c FROM users`).get().then(r=>Number(r?.c||0));
+          const hasPros = await adapter.prepare(`SELECT COUNT(*) as c FROM prospects`).get().then(r=>Number(r?.c||0));
+          if ((hasUsers + hasPros) === 0) {
+            const src = new BetterDB(srcPath);
+            const pragma = (t)=> src.prepare(`PRAGMA table_info(${t})`).all().map(r=>r.name);
+            const copy = async (table, orderById=true)=>{
+              try {
+                const cols = pragma(table);
+                if (!cols.length) return;
+                const colList = cols.join(',');
+                const rows = src.prepare(`SELECT ${colList} FROM ${table} ${orderById?'ORDER BY id ASC':''}`).all();
+                if (!rows.length) return;
+                const placeholders = cols.map(()=>'?').join(',');
+                const onConflict = cols.includes('id') ? ` ON CONFLICT(id) DO UPDATE SET ${cols.filter(c=>c!=='id').map(c=>`${c}=excluded.${c}`).join(', ')}` : '';
+                const sql = `INSERT INTO ${table} (${colList}) VALUES (${placeholders})${onConflict}`;
+                for (const row of rows){
+                  const args = cols.map(c=> row[c] ?? null);
+                  await adapter.prepare(sql).run(args);
+                }
+                console.log(`[MIGRATE] ${table}: ${rows.length} filas`);
+              } catch (e){ console.warn(`[MIGRATE] ${table} aviso:`, e.message); }
+            };
+            await copy('settings', false);
+            await copy('users');
+            await copy('uploads');
+            await copy('prospects');
+            await copy('plan');
+            await copy('upload_duplicates');
+            await copy('work_sessions');
+            console.log('[MIGRATE] Completa desde', srcPath);
+          } else {
+            console.log('[MIGRATE] Omitida: destino ya tiene datos');
+          }
+        } else {
+          console.log('[MIGRATE] Archivo origen no encontrado, omitida');
+        }
+      } catch (e) {
+        console.warn('[MIGRATE] Fallo de migracion (continuo sin bloquear):', e.message);
+      }
+    }
     startServer(PORT);
   } catch (e) {
     console.error('DB init failed:', e);
