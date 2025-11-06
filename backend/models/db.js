@@ -1,12 +1,32 @@
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const Database = require('better-sqlite3');
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'database.sqlite');
+const requestedPath = process.env.DB_PATH || path.join(__dirname, '..', 'database.sqlite');
+const tmpFallbackPath = path.join(os.tmpdir(), 'database.sqlite');
 let db;
+
+function openDatabase(p) {
+  try {
+    const dir = path.dirname(p);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    return new Database(p);
+  } catch (e) {
+    return null;
+  }
+}
 
 function ensureDb() {
   if (db) return db;
-  db = new Database(dbPath);
+  // Try requested path first, then /tmp fallback (ephemeral)
+  db = openDatabase(requestedPath) || openDatabase(tmpFallbackPath);
+  if (!db) {
+    throw new Error('No se pudo abrir la base de datos ni en la ruta indicada ni en /tmp');
+  }
+  if (db.name !== requestedPath) {
+    console.warn(`[DB] Usando base en fallback temporal: ${db.name}. Los datos no persistiran en reinicios.`);
+  }
   db.pragma('journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS prospects (
