@@ -1,34 +1,104 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { createClient } = require('@libsql/client');
 const Database = require('better-sqlite3');
 
 const requestedPath = process.env.DB_PATH || path.join(__dirname, '..', 'database.sqlite');
 const tmpFallbackPath = path.join(os.tmpdir(), 'database.sqlite');
-let db;
 
-function openDatabase(p) {
-  try {
-    const dir = path.dirname(p);
-    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
-    return new Database(p);
-  } catch (e) {
-    return null;
-  }
+let adapter = null;
+
+function mkBetterAdapter(filePath) {
+  const raw = new Database(filePath);
+  raw.pragma('journal_mode = WAL');
+  return {
+    kind: 'better',
+    raw,
+    async exec(sql) { raw.exec(sql); },
+    prepare(sql) {
+      const st = raw.prepare(sql);
+      return {
+        async get(params){ return st.get(params); },
+        async all(params){ return st.all(params); },
+        async run(...args){
+          const r = args.length === 1 ? st.run(args[0]) : st.run(...args);
+          return { changes: r.changes, lastInsertRowid: r.lastInsertRowid };
+        }
+      };
+    },
+    transaction(fn){
+      return async (...args) => {
+        try { raw.exec('BEGIN'); await fn(...args); raw.exec('COMMIT'); }
+        catch(e){ try { raw.exec('ROLLBACK'); } catch {} throw e; }
+      };
+    }
+  };
 }
 
-function ensureDb() {
-  if (db) return db;
-  // Try requested path first, then /tmp fallback (ephemeral)
-  db = openDatabase(requestedPath) || openDatabase(tmpFallbackPath);
-  if (!db) {
-    throw new Error('No se pudo abrir la base de datos ni en la ruta indicada ni en /tmp');
+function mkLibsqlAdapter(url, token){
+  const client = createClient({ url, authToken: token });
+  return {
+    kind: 'libsql',
+    async exec(sql){
+      // naive split; acceptable for our DDL/DML here
+      for (const stmt of sql.split(';')){
+        const s = stmt.trim();
+        if (!s) continue;
+        await client.execute(s);
+      }
+    },
+    prepare(sql){
+      return {
+        async get(params){ const r = await client.execute({ sql, args: params }); return r.rows?.[0] || undefined; },
+        async all(params){ const r = await client.execute({ sql, args: params }); return r.rows || []; },
+        async run(...args){
+          const params = args.length === 1 ? args[0] : args;
+          const r = await client.execute({ sql, args: params });
+          return { changes: r.rowsAffected || 0, lastInsertRowid: r.lastInsertRowid };
+        },
+      };
+    },
+    transaction(fn){
+      return async (...args) => {
+        const tx = await client.transaction();
+        const txAdapter = {
+          exec: (s) => tx.execute(s),
+          prepare: (sql) => ({
+            get: (p)=> tx.execute({ sql, args: p }).then(r=> r.rows?.[0] || undefined),
+            all: (p)=> tx.execute({ sql, args: p }).then(r=> r.rows || []),
+            run: (...a)=> {
+              const params = a.length === 1 ? a[0] : a;
+              return tx.execute({ sql, args: params }).then(r=> ({ changes: r.rowsAffected||0, lastInsertRowid: r.lastInsertRowid }));
+            },
+          })
+        };
+        try { await fn(txAdapter, ...args); await tx.commit(); }
+        catch(e){ try { await tx.rollback(); } catch {} throw e; }
+      };
+    }
+  };
+}
+
+async function ensureDb() {
+  if (adapter) return adapter;
+  if (process.env.LIBSQL_URL) {
+    adapter = mkLibsqlAdapter(process.env.LIBSQL_URL, process.env.LIBSQL_AUTH_TOKEN || undefined);
+  } else {
+    // Try requested path first, then /tmp fallback (ephemeral)
+    const tryOpen = (p)=>{
+      try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch {}
+      try { return mkBetterAdapter(p); } catch { return null; }
+    };
+    adapter = tryOpen(requestedPath) || tryOpen(tmpFallbackPath);
+    if (adapter && adapter.raw && adapter.raw.name !== requestedPath) {
+      console.warn(`[DB] Usando base en fallback temporal: ${adapter.raw.name}. Los datos no persistiran en reinicios.`);
+    }
+    if (!adapter) throw new Error('No se pudo abrir la base de datos.');
   }
-  if (db.name !== requestedPath) {
-    console.warn(`[DB] Usando base en fallback temporal: ${db.name}. Los datos no persistiran en reinicios.`);
-  }
-  db.pragma('journal_mode = WAL');
-  db.exec(`
+
+  // Schema setup (works for ambos adapters)
+  await adapter.exec(`
     CREATE TABLE IF NOT EXISTS prospects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE,
@@ -98,42 +168,27 @@ function ensureDb() {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
-  // Columns added after initial version: ensure they exist
-  try { db.prepare("SELECT avatar_url FROM prospects LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE prospects ADD COLUMN avatar_url TEXT"); } catch {}
+
+  // Ensure extra columns
+  async function ensureColumn(table, col, ddl){
+    try {
+      const info = await adapter.prepare(`PRAGMA table_info(${table})`).all();
+      const names = new Set(info.map(r=> r.name));
+      if (!names.has(col)) await adapter.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    } catch {}
   }
-  try { db.prepare("SELECT category FROM prospects LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE prospects ADD COLUMN category TEXT DEFAULT 'lead'"); } catch {}
-  }
-  try { db.prepare("SELECT whatsapp_number FROM prospects LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE prospects ADD COLUMN whatsapp_number TEXT"); } catch {}
-  }
-  try { db.prepare("SELECT upload_id FROM prospects LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE prospects ADD COLUMN upload_id INTEGER"); } catch {}
-  }
-  try { db.prepare("SELECT updated_by_user_id FROM plan LIMIT 1").get(); } catch {
-    db.exec("ALTER TABLE plan ADD COLUMN updated_by_user_id INTEGER");
-  }
-  try { db.prepare("SELECT user_id FROM work_sessions LIMIT 1").get(); } catch {
-    db.exec("ALTER TABLE work_sessions ADD COLUMN user_id INTEGER");
-  }
-  try { db.prepare("SELECT assigned_user_id FROM plan LIMIT 1").get(); } catch {
-    db.exec("ALTER TABLE plan ADD COLUMN assigned_user_id INTEGER");
-  }
-  try { db.prepare("SELECT source FROM uploads LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE uploads ADD COLUMN source TEXT"); } catch {}
-  }
-  try { db.prepare("SELECT network FROM uploads LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE uploads ADD COLUMN network TEXT"); } catch {}
-  }
-  try { db.prepare("SELECT instagram_account FROM uploads LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE uploads ADD COLUMN instagram_account TEXT"); } catch {}
-  }
-  try { db.prepare("SELECT duplicates_count FROM uploads LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE uploads ADD COLUMN duplicates_count INTEGER DEFAULT 0"); } catch {}
-  }
-  // Track duplicates per upload
-  db.exec(`
+  await ensureColumn('prospects','avatar_url','avatar_url TEXT');
+  await ensureColumn('prospects','category',"category TEXT DEFAULT 'lead'");
+  await ensureColumn('prospects','whatsapp_number','whatsapp_number TEXT');
+  await ensureColumn('prospects','upload_id','upload_id INTEGER');
+  await ensureColumn('plan','updated_by_user_id','updated_by_user_id INTEGER');
+  await ensureColumn('plan','assigned_user_id','assigned_user_id INTEGER');
+  await ensureColumn('uploads','source','source TEXT');
+  await ensureColumn('uploads','network','network TEXT');
+  await ensureColumn('uploads','instagram_account','instagram_account TEXT');
+  await ensureColumn('uploads','duplicates_count','duplicates_count INTEGER DEFAULT 0');
+
+  await adapter.exec(`
     CREATE TABLE IF NOT EXISTS upload_duplicates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       upload_id INTEGER NOT NULL,
@@ -147,21 +202,14 @@ function ensureDb() {
       FOREIGN KEY (upload_id) REFERENCES uploads(id)
     );
   `);
-  // Ensure users.hourly_rate exists (migrate from settings if present)
-  try { db.prepare("SELECT hourly_rate FROM users LIMIT 1").get(); } catch {
-    try { db.exec("ALTER TABLE users ADD COLUMN hourly_rate REAL DEFAULT 0"); } catch {}
-  }
-  // Ensure per_day default (messages per sender per day)
-  const perDayRow = db.prepare(`SELECT value FROM settings WHERE key='per_day'`).get();
-  if (!perDayRow) {
-    db.prepare(`INSERT INTO settings(key, value) VALUES('per_day', '25')`).run();
-  }
-  return db;
+  await ensureColumn('users','hourly_rate','hourly_rate REAL DEFAULT 0');
+
+  const perDayRow = await adapter.prepare(`SELECT value FROM settings WHERE key='per_day'`).get();
+  if (!perDayRow) await adapter.prepare(`INSERT INTO settings(key, value) VALUES('per_day', '25')`).run();
+
+  return adapter;
 }
 
-function getDb() {
-  if (!db) return ensureDb();
-  return db;
-}
+function getDb(){ return adapter; }
 
 module.exports = { ensureDb, getDb };

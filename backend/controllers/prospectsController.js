@@ -1,6 +1,6 @@
 const { getDb } = require('../models/db');
 
-function listProspects(req, res) {
+async function listProspects(req, res) {
   const db = getDb();
   const q = (req.query.q || '').toString().toLowerCase();
   const status = (req.query.status || '').toString().toLowerCase();
@@ -24,7 +24,7 @@ function listProspects(req, res) {
     if (source) { dw.push('LOWER(u.source) = ?'); dp.push(source); }
     if (account) { dw.push('u.instagram_account = ?'); dp.push(account); }
     const dWhere = dw.length ? `WHERE ${dw.join(' AND ')}` : '';
-    const items = db.prepare(`
+    const items = await db.prepare(`
       SELECT du.id as id, du.username, du.full_name, du.href,
              u.created_at as upload_created_at, u.source as upload_source, u.network as upload_network, u.instagram_account as upload_instagram_account,
              NULL as plan_id, NULL as date, NULL as account_label, NULL as status,
@@ -35,12 +35,12 @@ function listProspects(req, res) {
       ORDER BY du.id DESC
       LIMIT ? OFFSET ?
     `).all(...dp, limit, offset);
-    const total = db.prepare(`
+    const total = (await db.prepare(`
       SELECT COUNT(*) as c
       FROM upload_duplicates du
       JOIN uploads u ON u.id = du.upload_id
       ${dWhere}
-    `).get(...dp).c;
+    `).get(...dp)).c;
     return res.json({ ok: true, items, total, limit, offset });
   }
 
@@ -84,7 +84,7 @@ function listProspects(req, res) {
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT p.id, p.username, p.full_name, p.href, p.avatar_url, p.category, p.unwanted, p.upload_id, p.created_at,
            u.created_at as upload_created_at, u.source as upload_source, u.network as upload_network, u.instagram_account as upload_instagram_account,
            pl.id as plan_id, pl.date, pl.account_label, pl.status
@@ -96,29 +96,26 @@ function listProspects(req, res) {
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
-  const total = db.prepare(`
+  const total = (await db.prepare(`
     SELECT COUNT(*) as c
     FROM prospects p
     LEFT JOIN plan pl ON pl.prospect_id = p.id
     ${whereSql}
-  `).get(...params).c;
+  `).get(...params)).c;
 
   res.json({ ok: true, items: rows, total, limit, offset });
 }
 
-function deleteProspect(req, res) {
+async function deleteProspect(req, res) {
   const db = getDb();
   const id = Number(req.params.id);
-  const tx = db.transaction(()=>{
-    db.prepare(`DELETE FROM plan WHERE prospect_id=?`).run(id);
-    const r = db.prepare(`DELETE FROM prospects WHERE id=?`).run(id);
-    return r.changes;
-  });
-  const changes = tx();
+  await db.prepare(`DELETE FROM plan WHERE prospect_id=?`).run(id);
+  const r = await db.prepare(`DELETE FROM prospects WHERE id=?`).run(id);
+  const changes = r.changes;
   res.json({ ok: true, deleted: changes });
 }
 
-function updateProspect(req, res) {
+async function updateProspect(req, res) {
   const db = getDb();
   const id = Number(req.params.id);
   const body = req.body || {};
@@ -139,7 +136,7 @@ function updateProspect(req, res) {
   const setSql = keys.map(k => `${k}=?`).join(', ');
   const params = keys.map(k => fields[k]);
   try {
-    const r = db.prepare(`UPDATE prospects SET ${setSql} WHERE id=?`).run(...params, id);
+    const r = await db.prepare(`UPDATE prospects SET ${setSql} WHERE id=?`).run(...params, id);
     res.json({ ok: true, updated: r.changes });
   } catch (e) {
     if (String(e.message).includes('UNIQUE') && keys.includes('username')) {

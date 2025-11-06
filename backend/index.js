@@ -8,8 +8,6 @@ const { ensureDb } = require('./models/db');
 
 let PORT = Number(process.env.PORT) || 4000;
 
-ensureDb();
-
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || true; // string URL or true (reflect request)
@@ -55,4 +53,13 @@ function startServer(port, attemptsLeft = 5) {
     });
 }
 
-startServer(PORT);
+// Ensure DB initialized before listening
+(async () => {
+  try {
+    await ensureDb();
+    startServer(PORT);
+  } catch (e) {
+    console.error('DB init failed:', e);
+    process.exit(1);
+  }
+})();

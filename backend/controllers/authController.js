@@ -18,17 +18,17 @@ function me(req, res) {
   res.json({ ok: true, user: req.user || null });
 }
 
-function listUsers(req, res) {
+async function listUsers(req, res) {
   const db = getDb();
-  const rows = db.prepare(`SELECT id, name, username, email, role, phone_number, hourly_rate, created_at FROM users ORDER BY id DESC`).all();
+  const rows = await db.prepare(`SELECT id, name, username, email, role, phone_number, hourly_rate, created_at FROM users ORDER BY id DESC`).all();
   res.json({ ok: true, users: rows });
 }
 
-function register(req, res) {
+async function register(req, res) {
   const db = getDb();
   const { name, username, email, password, role, phone_number, hourly_rate } = req.body || {};
   if (!username || !email || !password) return res.status(400).json({ error: 'Faltan campos' });
-  const count = db.prepare(`SELECT COUNT(*) as c FROM users`).get().c;
+  const count = (await db.prepare(`SELECT COUNT(*) as c FROM users`).get()).c;
   const normalizedRole = count === 0 ? 'admin' : (role === 'admin' ? 'admin' : 'sender');
   if (count > 0 && (!req.user || req.user.role !== 'admin')) {
     return res.status(403).json({ error: 'Solo un administrador puede crear usuarios' });
@@ -38,7 +38,7 @@ function register(req, res) {
   const hash = bcrypt.hashSync(String(password), 10);
   try {
     const hr = Number(hourly_rate) || 0;
-    const r = db.prepare(`INSERT INTO users(name, username, email, password_hash, role, phone_number, hourly_rate) VALUES(?,?,?,?,?,?,?)`).run(name || null, username, email.toLowerCase(), hash, normalizedRole, phone, hr);
+    const r = await db.prepare(`INSERT INTO users(name, username, email, password_hash, role, phone_number, hourly_rate) VALUES(?,?,?,?,?,?,?)`).run(name || null, username, email.toLowerCase(), hash, normalizedRole, phone, hr);
     res.json({ ok: true, id: r.lastInsertRowid, role: normalizedRole });
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'Usuario o email ya existe' });
@@ -47,11 +47,11 @@ function register(req, res) {
   }
 }
 
-function login(req, res) {
+async function login(req, res) {
   const db = getDb();
   const { email, username, password } = req.body || {};
   if (!password || (!email && !username)) return res.status(400).json({ error: 'Faltan credenciales' });
-  const user = db.prepare(`SELECT * FROM users WHERE email = ? OR username = ?`).get((email || '').toLowerCase(), username || email || '');
+  const user = await db.prepare(`SELECT * FROM users WHERE email = ? OR username = ?`).get((email || '').toLowerCase(), username || email || '');
   if (!user) return res.status(401).json({ error: 'Credenciales inválidas' });
   const ok = bcrypt.compareSync(String(password), user.password_hash);
   if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
@@ -69,7 +69,7 @@ function logout(_req, res) {
 
 module.exports = { me, listUsers, register, login, logout };
 
-function updateUser(req, res) {
+async function updateUser(req, res) {
   const db = getDb();
   const id = Number(req.params.id);
   const { name, username, email, role, phone_number, password, hourly_rate } = req.body || {};
@@ -93,20 +93,17 @@ function updateUser(req, res) {
   }
   const keys = Object.keys(updates);
   if (!keys.length && !password) return res.status(400).json({ error: 'Nada para actualizar' });
-  const tx = db.transaction(() => {
+  try {
     if (keys.length) {
       const setSql = keys.map(k => `${k}=?`).join(', ');
-      db.prepare(`UPDATE users SET ${setSql} WHERE id=?`).run(...keys.map(k => updates[k]), id);
+      await db.prepare(`UPDATE users SET ${setSql} WHERE id=?`).run(...keys.map(k => updates[k]), id);
     }
     if (password != null) {
       const hash = bcrypt.hashSync(String(password), 10);
-      db.prepare(`UPDATE users SET password_hash=? WHERE id=?`).run(hash, id);
+      await db.prepare(`UPDATE users SET password_hash=? WHERE id=?`).run(hash, id);
     }
-  });
-  try {
-    tx();
     try {
-      const u = db.prepare(`SELECT id, role, name, username, email FROM users WHERE id=?`).get(id);
+      const u = await db.prepare(`SELECT id, role, name, username, email FROM users WHERE id=?`).get(id);
       if (u && req.user && Number(req.user.id) === id) {
         const token = signToken({ id: u.id, role: u.role, name: u.name, username: u.username, email: u.email });
         const isProd = process.env.NODE_ENV === 'production';
