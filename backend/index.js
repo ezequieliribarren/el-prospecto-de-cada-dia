@@ -22,6 +22,14 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Conveniences so hitting root paths doesn't 404 during manual checks
+app.get('/api', (_req, res) => {
+  res.json({ ok: true, tip: 'Usa /api/* endpoints. Salud: /api/health' });
+});
+app.get('/', (_req, res) => {
+  res.redirect('/api/health');
+});
+
 app.use('/api', apiRoutes);
 
 app.use((err, _req, res, _next) => {
