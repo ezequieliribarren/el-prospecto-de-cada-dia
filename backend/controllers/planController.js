@@ -126,6 +126,13 @@ function buildNextWeekdays(startStr, daysCount) {
 async function getRangePlan(req, res) {
   try {
     const db = getDb();
+    // Ensure required columns exist (robusto ante esquemas antiguos)
+    try {
+      const info = await db.prepare(`PRAGMA table_info(plan)`).all();
+      const cols = new Set((info||[]).map((r:any)=>r.name));
+      if (!cols.has('assigned_user_id')) await db.exec(`ALTER TABLE plan ADD COLUMN assigned_user_id INTEGER`);
+      if (!cols.has('updated_by_user_id')) await db.exec(`ALTER TABLE plan ADD COLUMN updated_by_user_id INTEGER`);
+    } catch {}
     const start = req.query.start || dayjs().format('YYYY-MM-DD');
     const daysN = Math.max(1, Math.min(60, Number(req.query.days) || 2));
     const dates = buildNextWeekdays(start, daysN);
