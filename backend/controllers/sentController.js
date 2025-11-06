@@ -1,6 +1,6 @@
 const { getDb } = require('../models/db');
 
-function listSent(req, res) {
+async function listSent(req, res) {
   const db = getDb();
   const from = req.query.from || '0000-01-01';
   const to = req.query.to || '9999-12-31';
@@ -24,7 +24,7 @@ function listSent(req, res) {
     where += ` AND (LOWER(p.username) LIKE ? OR p.whatsapp_number LIKE ?)`;
     params.push(`%${q}%`, `%${q}%`);
   }
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT pl.id as plan_id, pl.date, pl.status, pl.assigned_user_id,
            p.id as prospect_id, p.username, p.full_name, p.href, p.whatsapp_number,
            u.username as assigned_username, u.name as assigned_name
@@ -37,11 +37,11 @@ function listSent(req, res) {
   res.json({ ok: true, items: rows });
 }
 
-function updateProspectWhatsApp(req, res) {
+async function updateProspectWhatsApp(req, res) {
   const db = getDb();
   const id = Number(req.params.id);
   const num = (req.body && req.body.whatsapp_number != null) ? String(req.body.whatsapp_number).trim() : '';
-  const r = db.prepare(`UPDATE prospects SET whatsapp_number=? WHERE id=?`).run(num || null, id);
+  const r = await db.prepare(`UPDATE prospects SET whatsapp_number=? WHERE id=?`).run(num || null, id);
   res.json({ ok: true, updated: r.changes });
 }
 

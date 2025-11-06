@@ -1,28 +1,28 @@
 const dayjs = require('dayjs');
 const { getDb } = require('../models/db');
 
-function getSecondsSum(db) {
-  const s = db.prepare(`SELECT COALESCE(SUM(duration_sec),0) as sec FROM work_sessions`).get();
-  return Number(s.sec || 0);
+async function getSecondsSum(db) {
+  const s = await db.prepare(`SELECT COALESCE(SUM(duration_sec),0) as sec FROM work_sessions`).get();
+  return Number((s && s.sec) || 0);
 }
 
-function getMetrics(req, res) {
+async function getMetrics(req, res) {
   const db = getDb();
   const uid = req.user?.role === 'sender' ? req.user.id : null;
-  const totalProspects = db.prepare(`SELECT COUNT(*) as c FROM prospects`).get().c;
-  const totalAssigned = db.prepare(`SELECT COUNT(*) as c FROM plan`).get().c;
+  const totalProspects = (await db.prepare(`SELECT COUNT(*) as c FROM prospects`).get()).c;
+  const totalAssigned = (await db.prepare(`SELECT COUNT(*) as c FROM plan`).get()).c;
   const totalMessaged = uid
-    ? db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status IN ('sent','interested','won') AND updated_by_user_id=?`).get(uid).c
-    : db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status IN ('sent','interested','won')`).get().c;
+    ? (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status IN ('sent','interested','won') AND updated_by_user_id=?`).get(uid)).c
+    : (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status IN ('sent','interested','won')`).get()).c;
   const totalInterested = uid
-    ? db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='interested' AND updated_by_user_id=?`).get(uid).c
-    : db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='interested'`).get().c;
+    ? (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='interested' AND updated_by_user_id=?`).get(uid)).c
+    : (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='interested'`).get()).c;
   const totalWon = uid
-    ? db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='won' AND updated_by_user_id=?`).get(uid).c
-    : db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='won'`).get().c;
+    ? (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='won' AND updated_by_user_id=?`).get(uid)).c
+    : (await db.prepare(`SELECT COUNT(*) as c FROM plan WHERE status='won'`).get()).c;
   const hours = uid
-    ? (db.prepare(`SELECT COALESCE(SUM(duration_sec),0) as sec FROM work_sessions WHERE user_id=?`).get(uid).sec || 0) / 3600
-    : getSecondsSum(db) / 3600;
+    ? ((await db.prepare(`SELECT COALESCE(SUM(duration_sec),0) as sec FROM work_sessions WHERE user_id=?`).get(uid)).sec || 0) / 3600
+    : (await getSecondsSum(db)) / 3600;
   // Per-user hourly rate
   const userHours = uid
     ? db.prepare(`SELECT u.id, u.username, u.name, u.hourly_rate as hr, COALESCE(SUM(ws.duration_sec),0)/3600.0 as hours
@@ -45,14 +45,14 @@ function getMetrics(req, res) {
   // messages per day (last 14 days)
   const from = dayjs().subtract(13, 'day').format('YYYY-MM-DD');
   const perDay = uid
-    ? db.prepare(`
+    ? await db.prepare(`
       SELECT date, COUNT(*) as sent
       FROM plan
       WHERE status IN ('sent','interested','won') AND date >= ? AND updated_by_user_id=?
       GROUP BY date
       ORDER BY date
     `).all(from, uid)
-    : db.prepare(`
+    : await db.prepare(`
       SELECT date, COUNT(*) as sent
       FROM plan
       WHERE status IN ('sent','interested','won') AND date >= ?
