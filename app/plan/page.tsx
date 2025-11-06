@@ -128,6 +128,17 @@ function RangeBoard({ data, user, onMark, onDelete }: { data:any, user:any, onMa
                                 } catch {}
                               }}
                             >{copied[it.plan_id] ? 'Copiado!' : 'Copiar'}</button>
+                            <button
+                              className={`btn-outline ${clickable ? '' : 'pointer-events-none opacity-60'}`}
+                              onClick={async ()=>{
+                                if (!clickable) return;
+                                try {
+                                  await api.put(`/plan/${it.plan_id}/unwanted`);
+                                  // tras marcar no lead, recargar rango
+                                  location.reload();
+                                } catch {}
+                              }}
+                            >No Lead</button>
                             {user?.role==='admin' && (
                               <button className="btn-outline" onClick={async ()=>{ await onDelete(it.prospect_id); }}>Eliminar</button>
                             )}
@@ -193,4 +204,3 @@ function TopControls({ isAdmin, isSender, perDay, onSavePerDay, onLoadMore, onSt
     </div>
   );
 }
-

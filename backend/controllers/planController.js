@@ -343,4 +343,18 @@ async function updatePlanStatus(req, res) {
   res.json({ ok: true, updated: r.changes });
 }
 
-module.exports = { generatePlan, getDayPlan, getWeekPlan, getRangePlan, autoGenerate, updatePlanStatus };
+async function markPlanProspectUnwanted(req, res) {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const row = await db.prepare(`SELECT prospect_id, assigned_user_id FROM plan WHERE id=?`).get([id]);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const uid = req.user?.id || null;
+  if (req.user?.role === 'sender' && row.assigned_user_id != null && row.assigned_user_id !== uid) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  await db.prepare(`UPDATE prospects SET unwanted=1 WHERE id=?`).run([row.prospect_id]);
+  await db.prepare(`DELETE FROM plan WHERE id=?`).run([id]);
+  res.json({ ok: true });
+}
+
+module.exports = { generatePlan, getDayPlan, getWeekPlan, getRangePlan, autoGenerate, updatePlanStatus, markPlanProspectUnwanted };
