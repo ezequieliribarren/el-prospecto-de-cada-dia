@@ -145,17 +145,23 @@ async function getRangePlan(req, res) {
     }
 
     if (senders.length) {
-    const countAllStmt = db.prepare(`SELECT COUNT(*) as c FROM plan WHERE date=? AND assigned_user_id=?`);
-    const pendingIdsForDateStmt = db.prepare(`SELECT id FROM plan WHERE date=? AND assigned_user_id=? AND status='pending' ORDER BY id DESC`);
-    const backlogOldStmt = db.prepare(`SELECT id FROM plan WHERE assigned_user_id=? AND status='pending' AND date < ? ORDER BY date ASC, id ASC`);
-    const updateDateByIdStmt = async (ids, newDate) => {
-      if (!ids || !ids.length) return 0;
-      const inQ = ids.map(()=>'?').join(',');
-      const r = await db.prepare(`UPDATE plan SET date=? WHERE id IN (${inQ})`).run(newDate, ...ids);
-      return r.changes;
-    };
-    const candStmt = db.prepare(`SELECT id FROM prospects WHERE unwanted=0 AND id NOT IN (SELECT prospect_id FROM plan) ORDER BY id ASC LIMIT ?`);
-    const insert = db.prepare(`INSERT INTO plan (prospect_id, date, account_label, assigned_user_id, status) VALUES (?,?,?,?, 'pending')`);
+      let schedulingWarning = null;
+      try {
+        const countAllStmt = db.prepare(`SELECT COUNT(*) as c FROM plan WHERE date=? AND assigned_user_id=?`);
+        const pendingIdsForDateStmt = db.prepare(`SELECT id FROM plan WHERE date=? AND assigned_user_id=? AND status='pending' ORDER BY id DESC`);
+        const backlogOldStmt = db.prepare(`SELECT id FROM plan WHERE assigned_user_id=? AND status='pending' AND date < ? ORDER BY date ASC, id ASC`);
+        const updateOneStmt = db.prepare(`UPDATE plan SET date=? WHERE id=?`);
+        const updateDateByIdStmt = async (ids, newDate) => {
+          if (!ids || !ids.length) return 0;
+          let changes = 0;
+          for (const id of ids) {
+            const r = await updateOneStmt.run(newDate, id);
+            changes += Number(r?.changes || 0);
+          }
+          return changes;
+        };
+        const candStmt = db.prepare(`SELECT id FROM prospects WHERE unwanted=0 AND id NOT IN (SELECT prospect_id FROM plan) ORDER BY id ASC LIMIT ?`);
+        const insert = db.prepare(`INSERT INTO plan (prospect_id, date, account_label, assigned_user_id, status) VALUES (?,?,?,?, 'pending')`);
 
     function nextWeekdayDate(str){
       let d = dayjs(str).add(1,'day');
@@ -165,10 +171,10 @@ async function getRangePlan(req, res) {
 
       for (const s of senders) {
         // 1) Move backlog (older than first date) forward into the range respecting perDay per date
-        let backlog = (await backlogOldStmt.all(s.id, dates[0])).map(r=>r.id);
+        let backlog = (await backlogOldStmt.all([s.id, dates[0]])).map(r=>r.id);
         if (backlog.length) {
           for (const d of dates) {
-            const haveAll = Number(((await countAllStmt.get(d, s.id))?.c) || 0);
+            const haveAll = Number(((await countAllStmt.get([d, s.id]))?.c) || 0);
             const missing = Math.max(0, perDay - haveAll);
             if (missing > 0 && backlog.length) {
               const take = backlog.splice(0, missing);
@@ -180,7 +186,7 @@ async function getRangePlan(req, res) {
           let carryDate = dates[dates.length-1];
           while (backlog.length) {
             carryDate = nextWeekdayDate(carryDate);
-            const haveAll = Number(((await countAllStmt.get(carryDate, s.id))?.c) || 0);
+            const haveAll = Number(((await countAllStmt.get([carryDate, s.id]))?.c) || 0);
             const missing = Math.max(0, perDay - haveAll);
             if (missing > 0) {
               const take = backlog.splice(0, missing);
@@ -194,10 +200,10 @@ async function getRangePlan(req, res) {
         // 2) Within the range, if a date has more than perDay total, move pending overflow to next dates successively
         for (let i=0; i<dates.length; i++) {
           const d = dates[i];
-          const total = Number(((await countAllStmt.get(d, s.id))?.c) || 0);
+          const total = Number(((await countAllStmt.get([d, s.id]))?.c) || 0);
           if (total > perDay) {
             const over = total - perDay;
-            const pendings = (await pendingIdsForDateStmt.all(d, s.id)).map(r=>r.id);
+            const pendings = (await pendingIdsForDateStmt.all([d, s.id])).map(r=>r.id);
             if (pendings.length > perDay) {
               const overPend = pendings.length - perDay;
               const moveIds = pendings.slice(0, overPend); // move newest pending first
@@ -206,7 +212,7 @@ async function getRangePlan(req, res) {
               let remaining = moveIds.slice();
               while (remaining.length) {
                 let targetDate = j < dates.length ? dates[j] : nextWeekdayDate(j === i+1 ? d : dates[j-1]);
-                const haveAllTgt = Number(((await countAllStmt.get(targetDate, s.id))?.c) || 0);
+                const haveAllTgt = Number(((await countAllStmt.get([targetDate, s.id]))?.c) || 0);
                 const missingTgt = Math.max(0, perDay - haveAllTgt);
                 if (missingTgt > 0) {
                   const take = remaining.splice(0, missingTgt);
@@ -221,13 +227,16 @@ async function getRangePlan(req, res) {
         }
         // 3) Fill missing in range with new prospects
         for (const d of dates) {
-          const haveAll = Number(((await countAllStmt.get(d, s.id))?.c) || 0);
+          const haveAll = Number(((await countAllStmt.get([d, s.id]))?.c) || 0);
           const missing = Math.max(0, perDay - haveAll);
           if (missing > 0) {
-            const cands = await candStmt.all(missing);
+            const cands = await candStmt.all([missing]);
             for (const c of cands) await insert.run(c.id, d, s.username, s.id);
           }
         }
+        }
+      } catch (e) {
+        console.warn('[plan/range] scheduling step failed (continuing):', e?.message || e);
       }
     }
 
