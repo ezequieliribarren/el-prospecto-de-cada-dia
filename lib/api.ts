@@ -53,6 +53,11 @@ api.interceptors.request.use(async (config) => {
   await detectBase();
   config.baseURL = CURRENT_BASE;
   config.withCredentials = true;
+  // Adjunta Authorization si hay token guardado (soporte a entornos con bloqueo de 3rd-party cookies)
+  if (typeof window !== 'undefined') {
+    const t = localStorage.getItem('authToken');
+    if (t) config.headers = { ...(config.headers||{}), Authorization: `Bearer ${t}` } as any;
+  }
   return config;
 });
 

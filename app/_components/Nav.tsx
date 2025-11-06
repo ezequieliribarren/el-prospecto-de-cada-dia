@@ -36,7 +36,7 @@ export default function Nav() {
         {user ? (
           <>
             <span className="text-sm text-white/80">Hola, {user.name || user.username} <span className="text-white/50">({role})</span></span>
-            <button className="btn-outline" onClick={async ()=>{ await api.post('/auth/logout'); mutate(); location.href='/login'; }}>Salir</button>
+            <button className="btn-outline" onClick={async ()=>{ try { await api.post('/auth/logout'); } catch {} localStorage.removeItem('authToken'); mutate(); location.href='/login'; }}>Salir</button>
           </>
         ) : (
           <a className="btn-outline" href="/login">Entrar</a>

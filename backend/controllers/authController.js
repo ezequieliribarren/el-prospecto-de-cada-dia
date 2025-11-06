@@ -58,7 +58,7 @@ async function login(req, res) {
   const token = signToken({ id: user.id, role: user.role, name: user.name, username: user.username, email: user.email });
   const isProd = process.env.NODE_ENV === 'production';
   res.cookie('token', token, { httpOnly: true, sameSite: isProd ? 'none' : 'lax', secure: isProd, maxAge: 7 * 24 * 3600 * 1000 });
-  res.json({ ok: true });
+  res.json({ ok: true, token });
 }
 
 function logout(_req, res) {

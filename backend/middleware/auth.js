@@ -14,8 +14,17 @@ function verifyToken(token) {
   }
 }
 
+function extractToken(req){
+  const cookieTok = req.cookies?.token;
+  const auth = req.headers?.authorization || '';
+  const bearerTok = auth.toLowerCase().startsWith('bearer ')
+    ? auth.slice(7).trim()
+    : null;
+  return bearerTok || cookieTok || null;
+}
+
 function authOptional(req, _res, next) {
-  const token = req.cookies?.token;
+  const token = extractToken(req);
   if (token) {
     const data = verifyToken(token);
     if (data) req.user = data;
@@ -24,7 +33,7 @@ function authOptional(req, _res, next) {
 }
 
 function requireAuth(req, res, next) {
-  const token = req.cookies?.token;
+  const token = extractToken(req);
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   const data = verifyToken(token);
   if (!data) return res.status(401).json({ error: 'Unauthorized' });
@@ -41,4 +50,3 @@ function requireRole(role) {
 }
 
 module.exports = { signToken, verifyToken, requireAuth, requireRole, authOptional };
-

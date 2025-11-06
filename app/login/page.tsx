@@ -17,7 +17,8 @@ export default function LoginPage() {
     e.preventDefault();
     setErr('');
     try {
-      await api.post('/auth/login', { email: user.includes('@') ? user : undefined, username: user.includes('@') ? undefined : user, password: pass });
+      const r = await api.post('/auth/login', { email: user.includes('@') ? user : undefined, username: user.includes('@') ? undefined : user, password: pass });
+      if (typeof window !== 'undefined' && r?.data?.token) localStorage.setItem('authToken', r.data.token);
       router.push('/dashboard');
     } catch (e: any) {
       setErr(e?.response?.data?.error || 'Error al iniciar sesion');
@@ -77,4 +78,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
