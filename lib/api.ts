@@ -4,14 +4,25 @@ let CURRENT_BASE = (typeof window !== 'undefined' && localStorage.getItem('apiBa
   || process.env.NEXT_PUBLIC_API_BASE
   || 'http://localhost:4000/api';
 
+const HARD_CODED_REMOTE = [
+  // Fallback publico conocido (Render)
+  'https://el-prospecto-de-cada-dia-backend.onrender.com/api',
+];
+
+const SAME_ORIGIN_API = (typeof window !== 'undefined')
+  ? `${window.location.origin.replace(/\/$/, '')}/api`
+  : '';
+
 const CANDIDATE_BASES = Array.from(new Set([
   process.env.NEXT_PUBLIC_API_BASE || '',
+  SAME_ORIGIN_API,
   'http://localhost:4000/api',
   'http://127.0.0.1:4000/api',
   'http://localhost:4001/api',
   'http://127.0.0.1:4001/api',
   'http://localhost:4002/api',
   'http://127.0.0.1:4002/api',
+  ...HARD_CODED_REMOTE,
 ].filter(Boolean)));
 
 export const api = axios.create({ baseURL: CURRENT_BASE, withCredentials: true });
