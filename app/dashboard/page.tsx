@@ -9,7 +9,9 @@ const fetcher = (url: string) => api.get(url.replace(API_BASE, '')).then(r => r.
 import { API_BASE } from '../../lib/api';
 
 export default function Dashboard() {
-  const { data } = useSWR(apiUrl('/metrics'), (url) => api.get('/metrics').then(r => r.data), { refreshInterval: 5000 });
+  // Evita pedir /metrics si no hay usuario autenticado todavía (previene 401 ruidosos)
+  const me = useSWR('/auth/me', () => api.get('/auth/me').then(r=>r.data).catch(()=>({ user: null })));
+  const { data } = useSWR(me.data?.user ? apiUrl('/metrics') : null, () => api.get('/metrics').then(r => r.data), { refreshInterval: 5000 });
   const totals = data?.totals || {};
   const rates = data?.rates || {};
   const series = data?.series || {};
