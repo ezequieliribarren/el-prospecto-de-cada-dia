@@ -12,9 +12,30 @@ let PORT = Number(process.env.PORT) || 4000;
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
-const CORS_ORIGIN = process.env.CORS_ORIGIN || true; // string URL or true (reflect request)
+// Robust CORS: admite lista separada por comas y normaliza sin '/'
+const rawCors = process.env.CORS_ORIGIN || '';
+const WHITELIST = rawCors
+  .split(',')
+  .map((s) => s.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+const originFn = (origin, callback) => {
+  // Permite non-browser requests (no Origin) como health checks
+  if (!origin) return callback(null, true);
+  const normalized = origin.replace(/\/$/, '');
+  if (!WHITELIST.length) {
+    // sin configuración: reflejar origen (útil en dev o cuando ya confías por proxy)
+    return callback(null, normalized);
+  }
+  if (WHITELIST.includes(normalized)) {
+    return callback(null, normalized);
+  }
+  return callback(new Error('Not allowed by CORS'), false);
+};
+
 app.set('trust proxy', 1);
-app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+app.use(cors({ origin: originFn, credentials: true }));
+app.options('*', cors({ origin: originFn, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
