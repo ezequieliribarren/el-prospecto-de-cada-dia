@@ -1,7 +1,10 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const path = require('path');
+// path already required above
 const fs = require('fs');
 const BetterDB = require('better-sqlite3');
 
@@ -35,7 +38,8 @@ const originFn = (origin, callback) => {
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: originFn, credentials: true }));
-app.options('*', cors({ origin: originFn, credentials: true }));
+// Express 5 uses path-to-regexp v6 which doesn't accept '*' pattern.
+// Use a catch-all pattern compatible with v6 for preflight requests.
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 

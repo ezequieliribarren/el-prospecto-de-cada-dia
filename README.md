@@ -62,3 +62,18 @@ Notas
 
 ### Avatares de Instagram
 - Se muestran con `https://unavatar.io/instagram/<usuario>`.
+
+### Segmentación y scoring de prospects
+- Nuevos campos en `prospects`:
+  - `entity_kind` (`person|business`), `person_profession`, `industry`, `is_competitor` (0/1)
+  - `lead_score` (0–100), `interest_probability` (0–1)
+  - `classification_signals` (JSON), `classification_version`, `classification_updated_at`
+- Clasificador por reglas en `backend/utils/classifier.js`.
+- Backfill local: `node backend/scripts/backfill-classification.js`
+  - Reprocesar todos: `FULL_RECLASSIFY=1 node backend/scripts/backfill-classification.js`
+
+### Turso (libSQL)
+- Variables de entorno para usar Turso en lugar de SQLite local:
+  - `LIBSQL_URL` y `LIBSQL_AUTH_TOKEN` (opcional, según DB privada)
+- Migrar datos locales a Turso: `LIBSQL_URL=... LIBSQL_AUTH_TOKEN=... node backend/scripts/migrate-to-turso.js`
+- Al iniciar el backend con `LIBSQL_URL` definido, se conectará a Turso automáticamente.

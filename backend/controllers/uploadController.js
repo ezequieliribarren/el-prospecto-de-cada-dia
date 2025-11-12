@@ -1,5 +1,6 @@
 const XLSX = require('xlsx');
 const { getDb } = require('../models/db');
+const { classifyProspect } = require('../utils/classifier');
 
 const UNWANTED_KEYWORDS = [
   'diseño','diseno','diseñador','diseñadora','designer','design',
@@ -238,7 +239,14 @@ async function handleUpload(req, res) {
       rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     }
 
-    const insert = db.prepare(`INSERT OR IGNORE INTO prospects (username, full_name, href, avatar_url, category, source, upload_id, unwanted) VALUES (@username, @full_name, @href, @avatar_url, @category, @source, @upload_id, @unwanted)`);
+    // Build dynamic INSERT for prospects including classification fields when present
+    const prosColsInfo = db.prepare(`PRAGMA table_info(prospects)`).all();
+    const prosPresent = new Set(prosColsInfo.map(r => r.name));
+    const prosCols = ['username','full_name','href','avatar_url','category','source','upload_id','unwanted'];
+    const maybe = (c)=> { if (prosPresent.has(c)) prosCols.push(c); };
+    ['entity_kind','person_profession','industry','is_competitor','lead_score','interest_probability','classification_signals','classification_version','classification_updated_at'].forEach(maybe);
+    const prosPh = prosCols.map(c => '@'+c).join(',');
+    const insert = db.prepare(`INSERT OR IGNORE INTO prospects (${prosCols.join(',')}) VALUES (${prosPh})`);
     const hasUserStmt = db.prepare(`SELECT id FROM prospects WHERE username=?`);
     const insDup = db.prepare(`INSERT INTO upload_duplicates(upload_id, username, full_name, href, source, network, instagram_account) VALUES(?,?,?,?,?,?,?)`);
 
@@ -260,7 +268,21 @@ async function handleUpload(req, res) {
         continue;
       }
       seen.add(uname);
-      toInsert.push({ ...norm, category: selCategory, upload_id: uploadId, source: sourceIn || `upload:${uploadId}` });
+      const base = { ...norm, category: selCategory, upload_id: uploadId, source: sourceIn || `upload:${uploadId}` };
+      // attach classification if columns available
+      if (prosPresent.has('entity_kind')) {
+        const cls = classifyProspect({ username: uname, full_name: norm.full_name || '' });
+        base.entity_kind = cls.entity_kind || null;
+        base.person_profession = cls.person_profession || null;
+        base.industry = cls.industry || null;
+        base.is_competitor = cls.is_competitor ? 1 : 0;
+        base.lead_score = cls.lead_score || 0;
+        base.interest_probability = cls.interest_probability || 0;
+        base.classification_signals = JSON.stringify(cls.classification_signals || {});
+        base.classification_version = cls.classification_version || 'rules-v1';
+        base.classification_updated_at = new Date().toISOString().slice(0,19).replace('T',' ');
+      }
+      toInsert.push(base);
     }
 
     const tx = db.transaction((items) => {

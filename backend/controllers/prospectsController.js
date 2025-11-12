@@ -12,6 +12,14 @@ async function listProspects(req, res) {
   const source = (req.query.source || '').toString().toLowerCase();
   const account = (req.query.account || '').toString();
   const duplicates = req.query.duplicates === '1' || req.query.duplicates === 'true';
+  // classification filters and ordering
+  const entityKind = (req.query.entity_kind || '').toString().toLowerCase();
+  const personProfession = (req.query.person_profession || '').toString().toLowerCase();
+  const industry = (req.query.industry || '').toString().toLowerCase();
+  const isCompetitor = req.query.is_competitor;
+  const minScore = req.query.min_score != null ? Number(req.query.min_score) : null;
+  const maxScore = req.query.max_score != null ? Number(req.query.max_score) : null;
+  const sort = (req.query.sort || '').toString().toLowerCase();
   const limit = Math.min(200, Number(req.query.limit) || 100);
   const offset = Math.max(0, Number(req.query.offset) || 0);
 
@@ -61,6 +69,15 @@ async function listProspects(req, res) {
     where.push('LOWER(p.category)=?');
     params.push(category);
   }
+  if (entityKind) { where.push('LOWER(p.entity_kind)=?'); params.push(entityKind); }
+  if (personProfession) { where.push('LOWER(p.person_profession)=?'); params.push(personProfession); }
+  if (industry) { where.push('LOWER(p.industry)=?'); params.push(industry); }
+  if (isCompetitor === '0' || isCompetitor === '1' || isCompetitor === 'true' || isCompetitor === 'false') {
+    const v = (isCompetitor === '1' || isCompetitor === 'true') ? 1 : 0;
+    where.push('p.is_competitor = ?'); params.push(v);
+  }
+  if (minScore != null && !Number.isNaN(minScore)) { where.push('p.lead_score >= ?'); params.push(Math.max(0, minScore)); }
+  if (maxScore != null && !Number.isNaN(maxScore)) { where.push('p.lead_score <= ?'); params.push(Math.max(0, maxScore)); }
   if (status) {
     where.push('pl.status = ?');
     params.push(status);
@@ -86,13 +103,18 @@ async function listProspects(req, res) {
 
   const rows = await db.prepare(`
     SELECT p.id, p.username, p.full_name, p.href, p.avatar_url, p.category, p.unwanted, p.upload_id, p.created_at,
+           p.entity_kind, p.person_profession, p.industry, p.is_competitor, p.lead_score, p.interest_probability, p.classification_version, p.classification_updated_at,
            u.created_at as upload_created_at, u.source as upload_source, u.network as upload_network, u.instagram_account as upload_instagram_account,
            pl.id as plan_id, pl.date, pl.account_label, pl.status
     FROM prospects p
     LEFT JOIN plan pl ON pl.prospect_id = p.id
     LEFT JOIN uploads u ON u.id = p.upload_id
     ${whereSql}
-    ORDER BY COALESCE(pl.date, '9999-12-31') ASC, p.username ASC
+    ${
+      sort === 'score_desc' ? 'ORDER BY p.lead_score DESC, p.username ASC' :
+      sort === 'prob_desc' ? 'ORDER BY p.interest_probability DESC, p.username ASC' :
+      "ORDER BY COALESCE(pl.date, '9999-12-31') ASC, p.username ASC"
+    }
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 

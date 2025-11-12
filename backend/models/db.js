@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ override: true });
+// path already required above
 const fs = require('fs');
 const os = require('os');
 const { createClient } = require('@libsql/client');
@@ -192,6 +195,16 @@ async function ensureDb() {
   await ensureColumn('prospects','category',"category TEXT DEFAULT 'lead'");
   await ensureColumn('prospects','whatsapp_number','whatsapp_number TEXT');
   await ensureColumn('prospects','upload_id','upload_id INTEGER');
+  // Classification/segmentation columns
+  await ensureColumn('prospects','entity_kind',"entity_kind TEXT CHECK (entity_kind IN ('person','business'))");
+  await ensureColumn('prospects','person_profession','person_profession TEXT');
+  await ensureColumn('prospects','industry','industry TEXT');
+  await ensureColumn('prospects','is_competitor','is_competitor INTEGER DEFAULT 0');
+  await ensureColumn('prospects','lead_score','lead_score INTEGER DEFAULT 0');
+  await ensureColumn('prospects','interest_probability','interest_probability REAL DEFAULT 0');
+  await ensureColumn('prospects','classification_signals','classification_signals TEXT');
+  await ensureColumn('prospects','classification_version','classification_version TEXT');
+  await ensureColumn('prospects','classification_updated_at','classification_updated_at TEXT');
   await ensureColumn('plan','updated_by_user_id','updated_by_user_id INTEGER');
   await ensureColumn('plan','assigned_user_id','assigned_user_id INTEGER');
   await ensureColumn('uploads','source','source TEXT');
@@ -217,6 +230,14 @@ async function ensureDb() {
 
   const perDayRow = await adapter.prepare(`SELECT value FROM settings WHERE key='per_day'`).get();
   if (!perDayRow) await adapter.prepare(`INSERT INTO settings(key, value) VALUES('per_day', '25')`).run();
+
+  try {
+    if (adapter.kind === 'libsql') {
+      console.log(`[DB] Conectado a Turso (libSQL): ${process.env.LIBSQL_URL}`);
+    } else if (adapter.kind === 'better' && adapter.raw && adapter.raw.name) {
+      console.log(`[DB] Usando SQLite local: ${adapter.raw.name}`);
+    }
+  } catch {}
 
   return adapter;
 }

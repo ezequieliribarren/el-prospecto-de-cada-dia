@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ override: true });
 // Migrate data from local SQLite file to Turso (libSQL)
 // Usage:
 //   LIBSQL_URL=... LIBSQL_AUTH_TOKEN=... node backend/scripts/migrate-to-turso.js [SOURCE_DB_PATH]
 // Defaults SOURCE_DB_PATH to backend/database.sqlite
 
-const path = require('path');
+// path already required above
 const Database = require('better-sqlite3');
 const { createClient } = require('@libsql/client');
 
@@ -30,6 +33,16 @@ async function main(){
   await ensure(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);`);
   await ensure(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, username TEXT UNIQUE, email TEXT UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL, phone_number TEXT, hourly_rate REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));`);
   await ensure(`CREATE TABLE IF NOT EXISTS prospects (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, full_name TEXT, href TEXT, avatar_url TEXT, category TEXT DEFAULT 'lead', whatsapp_number TEXT, source TEXT, upload_id INTEGER, unwanted INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));`);
+  // add classification fields if missing (best-effort)
+  await ensure(`ALTER TABLE prospects ADD COLUMN entity_kind TEXT CHECK (entity_kind IN ('person','business'));`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN person_profession TEXT;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN industry TEXT;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN is_competitor INTEGER DEFAULT 0;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN lead_score INTEGER DEFAULT 0;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN interest_probability REAL DEFAULT 0;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN classification_signals TEXT;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN classification_version TEXT;`);
+  await ensure(`ALTER TABLE prospects ADD COLUMN classification_updated_at TEXT;`);
   await ensure(`CREATE TABLE IF NOT EXISTS uploads (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, mime TEXT, size INTEGER, source TEXT, network TEXT, instagram_account TEXT, processed INTEGER, unique_count INTEGER, inserted INTEGER, unwanted_count INTEGER, skipped_no_username INTEGER, duplicates_count INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));`);
   await ensure(`CREATE TABLE IF NOT EXISTS plan (id INTEGER PRIMARY KEY AUTOINCREMENT, prospect_id INTEGER NOT NULL, date TEXT NOT NULL, account_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', updated_by_user_id INTEGER, assigned_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')));`);
   await ensure(`CREATE TABLE IF NOT EXISTS upload_duplicates (id INTEGER PRIMARY KEY AUTOINCREMENT, upload_id INTEGER NOT NULL, username TEXT, full_name TEXT, href TEXT, source TEXT, network TEXT, instagram_account TEXT, created_at TEXT DEFAULT (datetime('now')));`);

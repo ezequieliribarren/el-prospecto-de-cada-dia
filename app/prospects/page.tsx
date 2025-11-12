@@ -12,14 +12,46 @@ export default function ProspectsPage() {
   const [uploadId, setUploadId] = React.useState('');
   const [srcFilter, setSrcFilter] = React.useState('');
   const [acctFilter, setAcctFilter] = React.useState('');
+  // Clasificacion
+  const [entityKind, setEntityKind] = React.useState('');
+  const [industry, setIndustry] = React.useState('');
+  const [profession, setProfession] = React.useState('');
+  const [competitor, setCompetitor] = React.useState(''); // '', '0', '1'
+  const [sort, setSort] = React.useState(''); // '', 'score_desc', 'prob_desc'
   const [page, setPage] = React.useState(0);
   const [showDup, setShowDup] = React.useState(false);
   const limit = 50;
 
   const uploads = useSWR('/uploads', () => api.get('/uploads').then(r=>r.data));
   const { data } = useSWR(
-    apiUrl(`/prospects?q=${encodeURIComponent(q)}&status=${status}&date=${date}&upload_id=${uploadId}&source=${encodeURIComponent(srcFilter)}&account=${encodeURIComponent(acctFilter)}&duplicates=${showDup ? '1':'0'}&limit=${limit}&offset=${page*limit}`),
-    () => api.get(`/prospects`, { params: { q, status, date, upload_id: uploadId || undefined, source: srcFilter || undefined, account: acctFilter || undefined, duplicates: showDup ? '1' : undefined, limit, offset: page*limit } }).then(r => r.data)
+    apiUrl(`/prospects?q=${encodeURIComponent(q)}&status=${status}&date=${date}`
+      + `&upload_id=${uploadId}`
+      + `&source=${encodeURIComponent(srcFilter)}`
+      + `&account=${encodeURIComponent(acctFilter)}`
+      + `&entity_kind=${entityKind}`
+      + `&industry=${industry}`
+      + `&person_profession=${profession}`
+      + `&is_competitor=${competitor}`
+      + `&sort=${sort}`
+      + `&duplicates=${showDup ? '1':'0'}&limit=${limit}&offset=${page*limit}`),
+    () => api.get(`/prospects`, {
+      params: {
+        q,
+        status,
+        date,
+        upload_id: uploadId || undefined,
+        source: srcFilter || undefined,
+        account: acctFilter || undefined,
+        entity_kind: entityKind || undefined,
+        industry: industry || undefined,
+        person_profession: profession || undefined,
+        is_competitor: competitor || undefined,
+        sort: sort || undefined,
+        duplicates: showDup ? '1' : undefined,
+        limit,
+        offset: page*limit
+      }
+    }).then(r => r.data)
   );
 
   const items = data?.items || [];
@@ -68,6 +100,43 @@ export default function ProspectsPage() {
               ))}
             </select>
           </L>
+          <L label="Tipo">
+            <select className="input w-full" value={entityKind} onChange={e=>{ setEntityKind(e.target.value); setPage(0); }}>
+              <option value="">Todos</option>
+              <option value="person">Persona</option>
+              <option value="business">Laboral/Empresa</option>
+            </select>
+          </L>
+          <L label="Rubro">
+            <select className="input w-full" value={industry} onChange={e=>{ setIndustry(e.target.value); setPage(0); }}>
+              <option value="">Todos</option>
+              {['legal','psicologia','coaching','diseno_interiores','arquitectura','constructoras','emprendimiento','locales','indumentaria','salud','agencia','tecnologia','construccion','gastronomia','retail','educacion','otros'].map((r)=> (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </L>
+          <L label="Profesión">
+            <select className="input w-full" value={profession} onChange={e=>{ setProfession(e.target.value); setPage(0); }}>
+              <option value="">Todas</option>
+              {['abogado','contador','coach','psicologo','arquitecto','interiorista'].map((p)=> (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </L>
+          <L label="Competidor">
+            <select className="input w-full" value={competitor} onChange={e=>{ setCompetitor(e.target.value); setPage(0); }}>
+              <option value="">Todos</option>
+              <option value="0">No</option>
+              <option value="1">Sí</option>
+            </select>
+          </L>
+          <L label="Orden">
+            <select className="input w-full" value={sort} onChange={e=>{ setSort(e.target.value); setPage(0); }}>
+              <option value="">Por fecha/usuario</option>
+              <option value="score_desc">Score desc</option>
+              <option value="prob_desc">Probabilidad desc</option>
+            </select>
+          </L>
         </div>
 
         <div className="card p-4">
@@ -85,6 +154,10 @@ export default function ProspectsPage() {
                   <th className="py-2 pr-4">Usuario</th>
                   <th className="py-2 pr-4">Estado</th>
                   <th className="py-2 pr-4">Carga</th>
+                  <th className="py-2 pr-4">Tipo</th>
+                  <th className="py-2 pr-4">Rubro</th>
+                  <th className="py-2 pr-4">Prof.</th>
+                  <th className="py-2 pr-4">Score</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,6 +175,10 @@ export default function ProspectsPage() {
                     <td className="py-2 pr-4">{it.account_label || '-'}</td>
                     <td className="py-2 pr-4 capitalize">{it.status || '-'}</td>
                     <td className="py-2 pr-4">{it.upload_created_at ? new Date(it.upload_created_at).toLocaleDateString() : '-'}</td>
+                    <td className="py-2 pr-4">{it.entity_kind || '-'}</td>
+                    <td className="py-2 pr-4">{it.industry || '-'}</td>
+                    <td className="py-2 pr-4">{it.person_profession || '-'}</td>
+                    <td className="py-2 pr-4">{it.lead_score ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>
